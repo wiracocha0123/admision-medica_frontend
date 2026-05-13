@@ -45,16 +45,22 @@ const AppBar = styled(MuiAppBar, {
   color: '#333',
   boxShadow: '0px 1px 10px rgba(0, 0, 0, 0.05)',
   transition: theme.transitions.create(['width', 'margin'], {
-  easing: theme.transitions.easing.sharp,
-  duration: theme.transitions.duration.leavingScreen,
-  }),
-  ...(open && {
-  marginLeft: drawerWidth,
-  width: `calc(100% - ${drawerWidth}px)`,
-  transition: theme.transitions.create(['width', 'margin'], {
     easing: theme.transitions.easing.sharp,
-    duration: theme.transitions.duration.enteringScreen,
+    duration: theme.transitions.duration.leavingScreen,
   }),
+  // Mejoras de espaciado y alineación del Header
+  '& .MuiToolbar-root': {
+    display: 'flex',
+    alignItems: 'center',
+    px: { xs: 1, sm: 2, md: 3 },
+  },
+  ...(open && {
+    marginLeft: drawerWidth,
+    width: `calc(100% - ${drawerWidth}px)`,
+    transition: theme.transitions.create(['width', 'margin'], {
+      easing: theme.transitions.easing.sharp,
+      duration: theme.transitions.duration.enteringScreen,
+    }),
   }),
 }));
 
@@ -86,9 +92,15 @@ const Drawer = styled(MuiDrawer, { shouldForwardProp: (prop) => prop !== 'open' 
   }),
 );
 
-const StyledListItemButton = styled(ListItemButton)(({ theme, selected }) => ({
-  margin: '8px 16px',
+const StyledListItemButton = styled(ListItemButton, {
+  shouldForwardProp: (prop) => prop !== 'open',
+})(({ theme, selected, open }) => ({
+  margin: open ? '8px 16px' : '8px 8px',
   borderRadius: '12px',
+  justifyContent: open ? 'initial' : 'center',
+  paddingLeft: open ? theme.spacing(2) : 'auto',
+  paddingRight: open ? theme.spacing(2) : 'auto',
+  minHeight: 48,
   '&.Mui-selected': {
     backgroundColor: '#1976d2',
     color: '#ffffff',
@@ -104,11 +116,17 @@ const StyledListItemButton = styled(ListItemButton)(({ theme, selected }) => ({
   },
   '& .MuiListItemIcon-root': {
     color: selected ? '#ffffff' : '#a0aec0',
-    minWidth: '40px',
+    minWidth: 0,
+    marginRight: open ? theme.spacing(2) : '0',
+    justifyContent: 'center',
+    width: open ? 'auto' : '100%',
+    display: 'flex',
+    alignItems: 'center'
   },
   '& .MuiListItemText-primary': {
     fontWeight: selected ? 'bold' : 'normal',
     fontSize: '0.95rem',
+    display: open ? 'block' : 'none',
   },
 }));
 
@@ -179,13 +197,13 @@ export default function AdminLayout() {
       <AppBar position="absolute" open={open}>
         <Toolbar sx={{ pr: '24px' }}>
           <IconButton
-            edge="start"
             color="inherit"
             aria-label="open drawer"
-            onClick={toggleDrawer}
-            sx={{
-              marginRight: '36px',
-              display: { xs: 'none', md: open ? 'none' : 'block' },
+            edge="start"
+            onClick={open ? toggleDrawer : toggleDrawer}
+            sx={{ 
+              mr: 2, 
+              display: { xs: 'none', md: 'flex' } 
             }}
           >
             <MenuIcon />
@@ -199,7 +217,15 @@ export default function AdminLayout() {
           >
             <MenuIcon />
           </IconButton>
-          <Typography component="h1" variant="h6" color="#000 !important" noWrap sx={{ flexGrow: 1, fontWeight: 'bold' }}>
+          <Typography component="h1" variant="h6" color="#000 !important" sx={{ 
+            flexGrow: 1, 
+            fontWeight: 'bold',
+            fontSize: { xs: '1rem', sm: '1.25rem' },
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            mr: 1
+          }}>
             Panel de Administración
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -219,27 +245,55 @@ export default function AdminLayout() {
         <Toolbar
           sx={{
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
-            justifyContent: open ? 'space-between' : 'center',
+            justifyContent: 'center',
             px: [1],
-            py: 2
+            py: 2,
+            minHeight: open ? 120 : 80,
+            position: 'relative',
+            transition: 'all 0.3s ease'
           }}
         >
-          {open && (
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              width: '100%',
+            }}
+          >
             <Box 
               component="img"
               src={logoImg}
-              alt="Centro Médico de Salud de San Vicente"
+              alt="Logo"
               sx={{ 
-                height: 100,
-                maxWidth: '160px',
+                height: open ? 80 : 40,
+                width: 'auto',
+                maxWidth: open ? '80%' : '40px',
                 objectFit: 'contain',
-                borderRadius: 1,
-                ml: 2
+                transition: 'all 0.3s ease',
+                borderRadius: 1
               }}
             />
-          )}
-          <IconButton onClick={toggleDrawer} sx={{ color: 'white' }}>
+          </Box>
+          <IconButton 
+            onClick={toggleDrawer} 
+            sx={{ 
+              display: { xs: 'none', md: 'flex' },
+              color: 'white',
+              position: 'absolute',
+              right: 8,
+              bottom: 8,
+              bgcolor: 'rgba(255,255,255,0.1)',
+              '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' },
+              zIndex: 2,
+              // Solo mostrar cuando el sidebar está expandido
+              visibility: open ? 'visible' : 'hidden',
+              opacity: open ? 1 : 0,
+              transition: 'opacity 0.2s ease'
+            }}
+          >
             <ChevronLeftIcon />
           </IconButton>
         </Toolbar>
@@ -251,22 +305,26 @@ export default function AdminLayout() {
           }).map((item) => (
             <StyledListItemButton 
               key={item.text}
+              open={open}
               onClick={() => navigate(item.path)}
               selected={(() => {
                 if (item.path === '/admin') return location.pathname === '/admin';
                 return location.pathname.startsWith(item.path);
               })()}
             >
-              <ListItemIcon>
+              <ListItemIcon sx={{
+                minWidth: 0,
+                mr: open ? 2 : 'auto',
+                justifyContent: 'center',
+              }}>
                 {item.icon}
               </ListItemIcon>
-              <ListItemText primary={item.text} />
+              <ListItemText 
+                primary={item.text} 
+                sx={{ opacity: open ? 1 : 0 }}
+              />
             </StyledListItemButton>
           ))}
-                    
-          
-                    
-          
         </List>
       </Drawer>
 
@@ -319,7 +377,7 @@ export default function AdminLayout() {
               height: 100,
               maxWidth: '160px',
               objectFit: 'contain',
-              
+              borderRadius: 1
             }}
           />
         </Toolbar>
@@ -331,24 +389,25 @@ export default function AdminLayout() {
           }).map((item) => (
             <StyledListItemButton 
               key={item.text}
-              onClick={() => { navigate(item.path); handleDrawerToggle(); }}
+              open={true}
+              onClick={() => {
+                navigate(item.path);
+                handleDrawerToggle();
+              }}
               selected={(() => {
                 if (item.path === '/admin') return location.pathname === '/admin';
                 return location.pathname.startsWith(item.path);
               })()}
             >
-              <ListItemIcon>
+              <ListItemIcon sx={{ minWidth: 0, mr: 2, justifyContent: 'center' }}>
                 {item.icon}
               </ListItemIcon>
               <ListItemText primary={item.text} />
             </StyledListItemButton>
           ))}
-                    
-          
-                    
-          
         </List>
       </MuiDrawer>
+
       <Box
         component="main"
         sx={{

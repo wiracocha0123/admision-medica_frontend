@@ -1,0 +1,137 @@
+*{
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+html, body, #root {
+  height: 100vh;
+}
+
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Capa de degrade médico (tonos de cian y azul sereno) sobre la imagen de fondo */
+  background-image: linear-gradient(135deg, rgba(0, 151, 167, 0.45), rgba(2, 119, 189, 0.45)), url('../assets/fondoLogin.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.login-box {
+  width: 100%;
+  max-width: 1050px;
+  height: 520px;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  flex-wrap: nowrap;
+  /* Sombra más amplia y delicada en tono azul */
+  box-shadow: 0 20px 50px rgba(0, 90, 130, 0.25);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.login-left {
+  position: relative;
+  /* Sombra interna del lado izquierdo */
+  box-shadow: inset -6px 0 16px rgba(0, 0, 0, 0.02);
+}
+
+.login-left::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(2, 136, 209, 0.04), rgba(0, 150, 136, 0.04));
+  pointer-events: none;
+}
+
+.login-right {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 56px 48px;
+  background-color: #fcfcfc;
+}
+
+.login-right h1 {
+  margin: 0 0 8px 0;
+  font-size: 1.8rem;
+  color: #01579b; /* Azul corporativo médico */
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+.login-form {
+  width: 100%;
+  max-width: 420px;
+  padding: 12px 16px;
+}
+
+/* Layout refinements to improve spacing and image handling */
+.login-left,
+.login-right {
+  width: 50%;
+  min-width: 0;
+  flex: 0 0 50%;
+}
+
+.login-left {
+  position: relative;
+  /* logo as background on left column */
+  background-image: url('../assets/logo.jpg');
+  background-size: contain;
+  background-position: center left;
+  background-repeat: no-repeat;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+}
+
+.login-form .MuiTextField-root { margin-bottom: 14px; }
+
+/* tighten spacing for small screens */
+@media (max-width: 880px) {
+  .login-box { flex-direction: column; height: auto; }
+  .login-left, .login-right { width: 100%; }
+  .login-left { height: 160px; }
+  .login-right { padding: 20px; }
+  .login-card { padding: 14px; }
+}
+
+@media (max-width: 800px) {
+  .login-box { flex-direction: column; height: auto; }
+  .login-left, .login-right { width: 100%; }
+  .login-left { height: 180px; }
+}
+
+/* Card and form refinements for MUI-based login */
+.login-card {
+  border-radius: 12px;
+  overflow: visible;
+}
+.login-card .brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.login-card .subtitle {
+  color: #6b7280;
+  font-size: 0.95rem;
+}
+.login-card .MuiTextField-root {
+  background: transparent;
+  border-radius: 8px;
+}
+.login-card .MuiButton-contained {
+  background: #0b74a6;
+  box-shadow: 0 6px 18px rgba(11,116,166,0.10);
+}
+.login-card .MuiButton-contained:disabled {
+  opacity: 0.7;
+}

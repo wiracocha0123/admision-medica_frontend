@@ -45,9 +45,16 @@ export default function Personal() {
 
   const { data: especialidadesData } = useQuery({
     queryKey: ['especialidades_all'],
-    queryFn: () => getEspecialidades(1), // Asumiendo que trae la mayoría o que el service maneja paginación
+    queryFn: () => getEspecialidades(1).then(res => {
+      const resp = res?.data || res;
+      // Normalizamos para obtener solo el array de datos
+      return Array.isArray(resp.data) ? resp.data : (Array.isArray(resp) ? resp : []);
+    }),
+    staleTime: 5 * 60 * 1000,
+    cacheTime: 10 * 60 * 1000,
+    enabled: !!user,
   });
-  const especialidades = especialidadesData?.data?.data || especialidadesData?.data || [];
+  const especialidades = Array.isArray(especialidadesData) ? especialidadesData : [];
 
   const deleteMutation = useMutation({
     mutationFn: (id) => deletePersonalSalud(id),

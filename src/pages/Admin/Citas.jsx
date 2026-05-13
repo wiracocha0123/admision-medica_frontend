@@ -42,6 +42,17 @@ export default function Citas() {
     enabled: !!user,
   });
 
+  const { data: especialidadesData } = useQuery({
+    queryKey: ["especialidades_all"],
+    queryFn: () => getEspecialidades(1).then(res => {
+      const resp = res?.data || res;
+      // Normalizamos para obtener solo el array de datos
+      return Array.isArray(resp.data) ? resp.data : (Array.isArray(resp) ? resp : []);
+    }),
+    staleTime: 5 * 60 * 1000, // Los datos se consideran frescos por 5 minutos
+    cacheTime: 10 * 60 * 1000,
+  });
+
   const { data: pacientesData } = useQuery({
     queryKey: ["pacientes_all"],
     queryFn: () => getPacientes(1).then(res => {
@@ -54,15 +65,6 @@ export default function Citas() {
   const { data: personalData } = useQuery({
     queryKey: ["personal_all"],
     queryFn: () => getPersonalSalud(1).then(res => {
-      const resp = res?.data || res;
-      return Array.isArray(resp.data) ? resp.data : (Array.isArray(resp) ? resp : []);
-    }),
-    enabled: !!user && openModal,
-  });
-
-  const { data: especialidadesData } = useQuery({
-    queryKey: ["especialidades_all"],
-    queryFn: () => getEspecialidades(1).then(res => {
       const resp = res?.data || res;
       return Array.isArray(resp.data) ? resp.data : (Array.isArray(resp) ? resp : []);
     }),

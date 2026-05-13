@@ -33,28 +33,31 @@ const formatHora = (val) => {
 export default function HorarioSemanalDisplay({ horario }) {
   const [open, setOpen] = useState(false);
 
-  // Intentar parsear si el horario viene como string JSON
   let parsed = horario;
-  if (typeof horario === 'string') {
-    const trimmed = horario.trim();
-    if (trimmed.startsWith('{')) {
+  
+  // Normalizar el formato: Si es un array [ { lunes: {...} } ], extraer el objeto interior
+  if (Array.isArray(horario) && horario.length > 0) {
+    parsed = horario[0];
+  }
+
+  // Intentar parsear si el horario viene como string JSON
+  if (typeof parsed === 'string') {
+    const trimmed = parsed.trim();
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
       try {
-        parsed = JSON.parse(trimmed);
+        let temp = JSON.parse(trimmed);
+        parsed = Array.isArray(temp) ? temp[0] : temp;
       } catch (e) {
         console.error("Error parsing horario string:", e);
         parsed = {};
       }
-    } else if (trimmed === "" || trimmed === "[]" || trimmed === "null") {
-      parsed = {};
     } else {
-      // Intento de fallback: Si no es JSON pero tiene contenido, 
-      // podría ser el formato antiguo plano que queremos soportar.
       parsed = {}; 
     }
   }
 
-  // Si no es un objeto, lo tratamos como vacío
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+  // Asegurar que parsed sea un objeto
+  if (!parsed || typeof parsed !== 'object') {
     parsed = {};
   }
 

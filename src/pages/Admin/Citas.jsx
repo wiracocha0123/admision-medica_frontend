@@ -1,73 +1,78 @@
-import React, { useState, useContext } from 'react';
+﻿import React, { useState, useContext } from "react";
 import { 
   Paper, Typography, Table, TableBody, TableCell, TableHead, TableRow, Button, Box, 
   CircularProgress, Alert, TableContainer, Skeleton, Chip, Pagination, Stack, Avatar, 
   IconButton, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, 
   MenuItem, Grid, FormControl, InputLabel, Select, Divider
-} from '@mui/material';
+} from "@mui/material";
 import { 
   Refresh as RefreshIcon, CalendarMonth as CalendarIcon, Edit as EditIcon, 
   Delete as DeleteIcon, Visibility as VisibilityIcon, Add as AddIcon 
-} from '@mui/icons-material';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getCitas, createCita, updateCita, deleteCita } from '../../services/citasService';
-import { getPacientes } from '../../services/pacientesService';
-import { getPersonalSalud } from '../../services/personalService';
-import { getEspecialidades } from '../../services/especialidadesService';
-import { AuthContext } from '../../contexts/AuthContext';
+} from "@mui/icons-material";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { getCitas, createCita, updateCita, deleteCita } from "../../services/citasService";
+import { getPacientes } from "../../services/pacientesService";
+import { getPersonalSalud } from "../../services/personalService";
+import { getEspecialidades } from "../../services/especialidadesService";
+import { AuthContext } from "../../contexts/AuthContext";
 
 export default function Citas() {
   const { user } = useContext(AuthContext);
-  const [page, setPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(1);
   const queryClient = useQueryClient();
 
-  // Estados para el Modal
   const [openModal, setOpenModal] = useState(false);
-  const [viewMode, setViewMode] = useState(false); // true: ver, false: crear/editar
+  const [viewMode, setViewMode] = useState(false); 
   const [selectedCita, setSelectedCita] = useState(null);
 
   const [formData, setFormData] = useState({
-    paciente_id: '',
-    personal_salud_id: '',
-    especialidad_id: '',
-    fecha: '',
-    hora: '',
-    estado: 'pendiente',
-    motivo: '',
-    observaciones: '',
-    nro_ticket: ''
+    paciente_id: "",
+    personal_salud_id: "",
+    especialidad_id: "",
+    fecha: "",
+    hora: "",
+    estado: "pendiente",
+    observaciones: "",
+    nro_ticket: ""
   });
 
-  // Consultas de datos para el formulario
   const { data: citasData, isLoading, error, refetch, isFetching } = useQuery({
-    queryKey: ['citas', page],
-    queryFn: () => getCitas(page),
+    queryKey: ["citas", currentPage],
+    queryFn: () => getCitas(currentPage),
     enabled: !!user,
   });
 
   const { data: pacientesData } = useQuery({
-    queryKey: ['pacientes_all'],
-    queryFn: () => getPacientes(1).then(res => res?.data || res || []),
-    enabled: !!user, // Habilitar siempre que el usuario esté logueado
+    queryKey: ["pacientes_all"],
+    queryFn: () => getPacientes(1).then(res => {
+      const resp = res?.data || res;
+      return Array.isArray(resp.data) ? resp.data : (Array.isArray(resp) ? resp : []);
+    }),
+    enabled: !!user && openModal,
   });
 
   const { data: personalData } = useQuery({
-    queryKey: ['personal_all'],
-    queryFn: () => getPersonalSalud(1).then(res => res?.data || res || []),
-    enabled: !!user,
+    queryKey: ["personal_all"],
+    queryFn: () => getPersonalSalud(1).then(res => {
+      const resp = res?.data || res;
+      return Array.isArray(resp.data) ? resp.data : (Array.isArray(resp) ? resp : []);
+    }),
+    enabled: !!user && openModal,
   });
 
   const { data: especialidadesData } = useQuery({
-    queryKey: ['especialidades_all'],
-    queryFn: () => getEspecialidades(1).then(res => res?.data || res || []),
-    enabled: !!user,
+    queryKey: ["especialidades_all"],
+    queryFn: () => getEspecialidades(1).then(res => {
+      const resp = res?.data || res;
+      return Array.isArray(resp.data) ? resp.data : (Array.isArray(resp) ? resp : []);
+    }),
+    enabled: !!user && openModal,
   });
 
-  // Mutaciones
   const mutationCreate = useMutation({
     mutationFn: createCita,
     onSuccess: () => {
-      queryClient.invalidateQueries(['citas']);
+      queryClient.invalidateQueries(["citas"]);
       handleCloseModal();
     }
   });
@@ -75,7 +80,7 @@ export default function Citas() {
   const mutationUpdate = useMutation({
     mutationFn: (data) => updateCita(selectedCita.id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries(['citas']);
+      queryClient.invalidateQueries(["citas"]);
       handleCloseModal();
     }
   });
@@ -83,24 +88,22 @@ export default function Citas() {
   const mutationDelete = useMutation({
     mutationFn: deleteCita,
     onSuccess: () => {
-      queryClient.invalidateQueries(['citas']);
+      queryClient.invalidateQueries(["citas"]);
     }
   });
 
-  // Handlers
   const handleOpenCreate = () => {
     setSelectedCita(null);
     setViewMode(false);
     setFormData({
-      paciente_id: '',
-      personal_salud_id: '',
-      especialidad_id: '',
-      fecha: '',
-      hora: '',
-      estado: 'pendiente',
-      motivo: '',
-      observaciones: '',
-      nro_ticket: ''
+      paciente_id: "",
+      personal_salud_id: "",
+      especialidad_id: "",
+      fecha: "",
+      hora: "",
+      estado: "pendiente",
+      observaciones: "",
+      nro_ticket: ""
     });
     setOpenModal(true);
   };
@@ -108,22 +111,15 @@ export default function Citas() {
   const handleOpenEdit = (cita) => {
     setSelectedCita(cita);
     setViewMode(false);
-    
-    // Normalización de fecha (ISO a YYYY-MM-DD)
-    const fechaLimpia = cita.fecha && cita.fecha.includes('T') 
-      ? cita.fecha.split('T')[0] 
-      : cita.fecha || '';
-
     setFormData({
-      paciente_id: cita.paciente_id || '',
-      personal_salud_id: cita.personal_salud_id || '',
-      especialidad_id: cita.especialidad_id || '',
-      fecha: fechaLimpia,
-      hora: cita.hora || cita.hora_cita || '',
-      estado: cita.estado?.toLowerCase() || 'pendiente',
-      motivo: cita.motivo || '',
-      observaciones: cita.observaciones || '',
-      nro_ticket: cita.nro_ticket || ''
+      paciente_id: cita.paciente_id || "",
+      personal_salud_id: cita.personal_salud_id || "",
+      especialidad_id: cita.especialidad_id || "",
+      fecha: cita.fecha ? cita.fecha.split("T")[0] : "",
+      hora: cita.hora || "",
+      estado: cita.estado || "pendiente",
+      observaciones: cita.observaciones || "",
+      nro_ticket: cita.nro_ticket || ""
     });
     setOpenModal(true);
   };
@@ -131,21 +127,15 @@ export default function Citas() {
   const handleOpenView = (cita) => {
     setSelectedCita(cita);
     setViewMode(true);
-    
-    const fechaLimpia = cita.fecha && cita.fecha.includes('T') 
-      ? cita.fecha.split('T')[0] 
-      : cita.fecha || '';
-
     setFormData({
-      paciente_id: cita.paciente_id || '',
-      personal_salud_id: cita.personal_salud_id || '',
-      especialidad_id: cita.especialidad_id || '',
-      fecha: fechaLimpia,
-      hora: cita.hora || cita.hora_cita || '',
-      estado: cita.estado?.toLowerCase() || 'pendiente',
-      motivo: cita.motivo || '',
-      observaciones: cita.observaciones || '',
-      nro_ticket: cita.nro_ticket || ''
+      paciente_id: cita.paciente_id || "",
+      personal_salud_id: cita.personal_salud_id || "",
+      especialidad_id: cita.especialidad_id || "",
+      fecha: cita.fecha ? cita.fecha.split("T")[0] : "",
+      hora: cita.hora || "",
+      estado: cita.estado || "pendiente",
+      observaciones: cita.observaciones || "",
+      nro_ticket: cita.nro_ticket || ""
     });
     setOpenModal(true);
   };
@@ -156,7 +146,7 @@ export default function Citas() {
   };
 
   const handleDelete = (id) => {
-    if (window.confirm('¿Está seguro de eliminar esta cita?')) {
+    if (window.confirm("¿Está seguro de eliminar esta cita?")) {
       mutationDelete.mutate(id);
     }
   };
@@ -165,10 +155,9 @@ export default function Citas() {
     e.preventDefault();
     const payload = {
       ...formData,
-      operador_id: user.id,
+      operador_id: user?.id,
       estado: formData.estado.toLowerCase()
     };
-    
     if (selectedCita) {
       mutationUpdate.mutate(payload);
     } else {
@@ -176,33 +165,32 @@ export default function Citas() {
     }
   };
 
-  // Normalización multinivel
   const paginationData = citasData?.data || citasData || {};
   const items = Array.isArray(paginationData.data) ? paginationData.data : (Array.isArray(paginationData) ? paginationData : []);
   const totalPages = paginationData.last_page || 1;
 
   const getEstadoColor = (estado) => {
     switch (estado?.toString().toLowerCase()) {
-      case 'pendiente': return 'warning';
-      case 'completada': return 'success';
-      case 'cancelada': return 'error';
-      default: return 'default';
+      case "pendiente": return "warning";
+      case "completada": return "success";
+      case "cancelada": return "error";
+      default: return "default";
     }
   };
 
   return (
     <Paper sx={{ p: 3 }}>
       <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "center", mb: 3 }}>
-        <Typography variant="h5" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Typography variant="h5" sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           <CalendarIcon /> Gestión de Citas {isFetching && <CircularProgress size={20} />}
         </Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
+        <Box sx={{ display: "flex", gap: 1 }}>
           <Button variant="outlined" startIcon={<RefreshIcon />} onClick={() => refetch()} disabled={isFetching}>Actualizar</Button>
           <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenCreate} color="primary">Nueva Cita</Button>
         </Box>
       </Stack>
 
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error.message || 'Error al cargar citas'}</Alert>}
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error.message || "Error al cargar citas"}</Alert>}
 
       <TableContainer>
         <Table size="small">
@@ -230,56 +218,37 @@ export default function Citas() {
               items.map((cita) => (
                 <TableRow key={cita.id} hover>
                   <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Avatar sx={{ width: 28, height: 28, fontSize: '0.75rem', bgcolor: 'primary.main' }}>
-                        {cita.paciente?.nombre?.[0] || 'P'}
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      <Avatar sx={{ width: 28, height: 28, fontSize: "0.75rem", bgcolor: "primary.main" }}>
+                        {cita.paciente?.nombre?.[0] || "P"}
                       </Avatar>
                       <Typography variant="body2">{cita.paciente?.nombre} {cita.paciente?.apellido}</Typography>
                     </Box>
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2">{cita.personal?.nombres || cita.personal_salud?.nombres} {cita.personal?.apellidos || cita.personal_salud?.apellidos}</Typography>
+                    <Typography variant="body2">{cita.personal_salud?.nombres} {cita.personal_salud?.apellidos}</Typography>
                   </TableCell>
                   <TableCell>
-                    <Chip label={cita.especialidad?.UPS || 'General'} size="small" variant="outlined" sx={{ fontSize: '0.7rem' }} />
+                    <Chip label={cita.especialidad?.UPS || "General"} size="small" variant="outlined" sx={{ fontSize: "0.7rem" }} />
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2" fontWeight="bold">
-                      {cita.fecha ? new Date(cita.fecha).toLocaleDateString() : '-'}
-                      <Box component="span" sx={{ display: 'block', fontSize: '0.75rem', color: 'text.secondary', fontWeight: 'normal' }}>
-                         {cita.hora || cita.hora_cita || '-'}
+                      {cita.fecha ? new Date(cita.fecha).toLocaleDateString() : "-"}
+                      <Box component="span" sx={{ display: "block", fontSize: "0.75rem", color: "text.secondary", fontWeight: "normal" }}>
+                         {cita.hora || "-"}
                       </Box>
                     </Typography>
                   </TableCell>
+                  <TableCell><Typography variant="body2">{cita.operador?.nombre || cita.operador?.name || "Admin"} </Typography></TableCell>
                   <TableCell>
-                    <Typography variant="body2">{cita.operador?.nombre || 'Admin'} </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Chip 
-                      label={cita.estado || 'pendiente'} 
-                      color={getEstadoColor(cita.estado)} 
-                      size="small" 
-                      sx={{ minWidth: 80, fontSize: '0.7rem', textTransform: 'capitalize' }}
-                    />
+                    <Chip label={cita.estado || "pendiente"} color={getEstadoColor(cita.estado)} size="small" sx={{ minWidth: 80, fontSize: "0.7rem", textTransform: "capitalize" }} />
                   </TableCell>
                   <TableCell align="center">
-                    <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                      <Tooltip title="Ver detalles">
-                        <IconButton size="small" color="info" onClick={() => handleOpenView(cita)}>
-                          <VisibilityIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Editar cita">
-                        <IconButton size="small" color="primary" onClick={() => handleOpenEdit(cita)}>
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Eliminar cita">
-                        <IconButton size="small" color="error" onClick={() => handleDelete(cita.id)}>
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
+                    <Stack direction="row" spacing={0.5} justifyContent="center">
+                      <IconButton size="small" color="info" onClick={() => handleOpenView(cita)}><VisibilityIcon fontSize="small" /></IconButton>
+                      <IconButton size="small" color="primary" onClick={() => handleOpenEdit(cita)}><EditIcon fontSize="small" /></IconButton>
+                      <IconButton size="small" color="error" onClick={() => handleDelete(cita.id)}><DeleteIcon fontSize="small" /></IconButton>
+                    </Stack>
                   </TableCell>
                 </TableRow>
               ))
@@ -288,191 +257,168 @@ export default function Citas() {
         </Table>
       </TableContainer>
 
-      <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
-        <Pagination count={totalPages} page={page} onChange={(_, v) => setPage(v)} color="primary" disabled={isFetching} size="small" />
+      <Box sx={{ mt: 3, display: "flex", justifyContent: "center" }}>
+        <Pagination count={totalPages} page={currentPage} onChange={(_, v) => setCurrentPage(v)} color="primary" disabled={isFetching} size="small" />
       </Box>
 
-      {/* MODAL DE CREACIÓN / EDICIÓN / VISTA */}
-      <Dialog open={openModal} onClose={handleCloseModal} maxWidth="sm" fullWidth>
+      <Dialog open={openModal} onClose={handleCloseModal} maxWidth="md" fullWidth>
         <form onSubmit={handleSubmit}>
-          <DialogTitle sx={{ 
-            bgcolor: viewMode ? 'info.main' : (selectedCita ? 'primary.main' : 'success.main'), 
-            color: 'white', 
-            py: 2,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1
-          }}>
+          <DialogTitle sx={{ bgcolor: viewMode ? "info.main" : (selectedCita ? "primary.main" : "success.main"), color: "white", py: 2, display: "flex", alignItems: "center", gap: 1 }}>
             <CalendarIcon />
-            {viewMode ? 'Detalles de la Cita' : (selectedCita ? 'Modificar Cita' : 'Programar Nueva Cita')}
+            {viewMode ? "Detalles de la Cita" : (selectedCita ? "Modificar Cita" : "Programar Nueva Cita")}
           </DialogTitle>
-          <DialogContent dividers>
-            <Grid container spacing={2.5} sx={{ mt: 0.5 }}>
+          <DialogContent dividers sx={{ bgcolor: "#f8f9fa", p: 4 }}>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 4 }}>
               
-              {/* SECCIÓN 1: CABECERA Y TICKET */}
-              <Grid item xs={12}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                  <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 'bold' }}>Referencia de Cita</Typography>
-                  {!viewMode && <Chip label="Nuevo Registro" size="small" color="success" variant="outlined" />}
-                </Box>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={8}>
-                    <FormControl fullWidth size="small" required>
+              <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
+                <Typography variant="subtitle2" color="primary" sx={{ fontWeight: "bold", mb: 3, borderBottom: "2px solid #primary.main", pb: 1, textTransform: "uppercase", letterSpacing: 1 }}>DATOS DEL PACIENTE Y REGISTRO</Typography>
+                <Grid container spacing={3}>
+                  <Grid item xs={12}>
+                    <FormControl sx={{ width: "100%", maxWidth: 650, minWidth: 220 }} required>
                       <InputLabel>Paciente</InputLabel>
-                      <Select
-                        value={formData.paciente_id}
-                        label="Paciente"
-                        disabled={viewMode}
+                      <Select 
+                        value={formData.paciente_id} 
+                        label="Paciente" 
+                        disabled={viewMode} 
                         onChange={(e) => setFormData({ ...formData, paciente_id: e.target.value })}
+                        sx={{ 
+                          width: "100%",
+                          ".MuiSelect-select": { py: 2 } 
+                        }}
                       >
                         {Array.isArray(pacientesData) && pacientesData.map(p => (
-                          <MenuItem key={p.id} value={p.id}>
+                          <MenuItem key={p.id} value={p.id} sx={{ py: 1.5 }}>
                             {p.nombre} {p.apellido} — DNI: {p.dni || p.documento}
                           </MenuItem>
                         ))}
                       </Select>
                     </FormControl>
                   </Grid>
-                  <Grid item xs={12} sm={4}>
-                    <TextField
-                      fullWidth
-                      label="N° Ticket"
-                      size="small"
-                      placeholder="Opcional"
-                      value={formData.nro_ticket}
-                      disabled={viewMode}
-                      onChange={(e) => setFormData({ ...formData, nro_ticket: e.target.value })}
+                  <Grid item xs={12}>
+                    <TextField 
+                      fullWidth 
+                      label="Operador del Sistema" 
+                      value={user ? `${user.nombre || user.name || ""} ${user.apellido || ""}` : "Sistema"} 
+                      disabled 
+                      slotProps={{ input: { readOnly: true, sx: { bgcolor: "#f5f5f5" } } }} 
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField 
+                      fullWidth 
+                      label="N° Ticket de Atención" 
+                      value={formData.nro_ticket} 
+                      disabled={viewMode} 
+                      onChange={(e) => setFormData({ ...formData, nro_ticket: e.target.value })} 
                     />
                   </Grid>
                 </Grid>
-              </Grid>
+              </Paper>
 
-              {/* SECCIÓN 2: ASIGNACIÓN MÉDICA */}
-              <Grid item xs={12}>
-                <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 'bold', display: 'block', mb: 1 }}>Servicio y Especialista</Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6}>
-                    <FormControl fullWidth size="small" required>
-                      <InputLabel>Especialidad</InputLabel>
-                      <Select
-                        value={formData.especialidad_id}
-                        label="Especialidad"
-                        disabled={viewMode}
-                        onChange={(e) => setFormData({ ...formData, especialidad_id: e.target.value })}
-                      >
-                        {Array.isArray(especialidadesData) && especialidadesData.map(e => (
-                          <MenuItem key={e.id} value={e.id}>{e.nombre_especialidad} ({e.UPS})</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <FormControl fullWidth size="small" required>
-                      <InputLabel>Médico / Personal</InputLabel>
-                      <Select
-                        value={formData.personal_salud_id}
-                        label="Médico / Personal"
-                        disabled={viewMode}
+              <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
+                <Typography variant="subtitle2" color="primary" sx={{ fontWeight: "bold", mb: 3, borderBottom: "2px solid #primary.main", pb: 1, textTransform: "uppercase", letterSpacing: 1 }}>ASIGNACIÓN MÉDICA</Typography>
+                <Grid container spacing={3}>
+                  <Grid item xs={12}>
+                    <FormControl sx={{ width: "100%", maxWidth: 650, minWidth: 220 }} required>
+                      <InputLabel>Médico Tratante</InputLabel>
+                      <Select 
+                        value={formData.personal_salud_id} 
+                        label="Médico Tratante" 
+                        disabled={viewMode} 
                         onChange={(e) => setFormData({ ...formData, personal_salud_id: e.target.value })}
+                        sx={{ 
+                          width: "100%",
+                          ".MuiSelect-select": { py: 2 } 
+                        }}
                       >
                         {Array.isArray(personalData) && personalData.map(p => (
-                          <MenuItem key={p.id} value={p.id}>{p.nombres} {p.apellidos}</MenuItem>
+                          <MenuItem key={p.id} value={p.id} sx={{ py: 1.5 }}>{p.nombres} {p.apellidos}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <FormControl sx={{ width: "100%", maxWidth: 650, minWidth: 220 }} required>
+                      <InputLabel>Especialidad</InputLabel>
+                      <Select 
+                        value={formData.especialidad_id} 
+                        label="Especialidad"
+                        disabled={viewMode} 
+                        onChange={(e) => setFormData({ ...formData, especialidad_id: e.target.value })}
+                        sx={{ 
+                          width: "100%",
+                          ".MuiSelect-select": { py: 2 } 
+                        }}
+                      >
+                        {Array.isArray(especialidadesData) && especialidadesData.map(esp => (
+                          <MenuItem key={esp.id} value={esp.id} sx={{ py: 1.5 }}>{esp.UPS} — {esp.nombre_especialidad}</MenuItem>
                         ))}
                       </Select>
                     </FormControl>
                   </Grid>
                 </Grid>
-              </Grid>
+              </Paper>
 
-              {/* SECCIÓN 3: FECHA, HORA Y ESTADO */}
-              <Grid item xs={12}>
-                <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 'bold', display: 'block', mb: 1 }}>Programación</Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={6} sm={4}>
-                    <TextField
-                      fullWidth
-                      label="Fecha"
-                      type="date"
-                      size="small"
-                      required
-                      InputLabelProps={{ shrink: true }}
-                      value={formData.fecha}
-                      disabled={viewMode}
-                      onChange={(e) => setFormData({ ...formData, fecha: e.target.value })}
+              <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
+                <Typography variant="subtitle2" color="primary" sx={{ fontWeight: "bold", mb: 3, borderBottom: "2px solid #primary.main", pb: 1, textTransform: "uppercase", letterSpacing: 1 }}>PROGRAMACIÓN DE CITA</Typography>
+                <Grid container spacing={3}>
+                  <Grid item xs={12}>
+                    <TextField 
+                      fullWidth 
+                      label="Fecha de la Cita" 
+                      type="date" 
+                      required 
+                      slotProps={{ inputLabel: { shrink: true } }} 
+                      value={formData.fecha} 
+                      disabled={viewMode} 
+                      onChange={(e) => setFormData({ ...formData, fecha: e.target.value })} 
                     />
                   </Grid>
-                  <Grid item xs={6} sm={4}>
-                    <TextField
-                      fullWidth
-                      label="Hora"
-                      type="time"
-                      size="small"
-                      required
-                      InputLabelProps={{ shrink: true }}
-                      value={formData.hora}
-                      disabled={viewMode}
-                      onChange={(e) => setFormData({ ...formData, hora: e.target.value })}
+                  <Grid item xs={12}>
+                    <TextField 
+                      fullWidth 
+                      label="Hora de Atención" 
+                      type="time" 
+                      required 
+                      slotProps={{ inputLabel: { shrink: true } }} 
+                      value={formData.hora} 
+                      disabled={viewMode} 
+                      onChange={(e) => setFormData({ ...formData, hora: e.target.value })} 
                     />
                   </Grid>
-                  <Grid item xs={12} sm={4}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Estado</InputLabel>
-                      <Select
-                        value={formData.estado}
-                        label="Estado"
-                        disabled={viewMode}
+                  <Grid item xs={12}>
+                    <FormControl fullWidth>
+                      <InputLabel>Estado de la Cita</InputLabel>
+                      <Select 
+                        value={formData.estado} 
+                        label="Estado de la Cita" 
+                        disabled={viewMode} 
                         onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
                       >
-                        <MenuItem value="pendiente">⚠️ Pendiente</MenuItem>
-                        <MenuItem value="completada">✅ Completada</MenuItem>
-                        <MenuItem value="cancelada">❌ Cancelada</MenuItem>
+                        <MenuItem value="pendiente">Pendiente</MenuItem>
+                        <MenuItem value="completada">Completada</MenuItem>
+                        <MenuItem value="cancelada">Cancelada</MenuItem>
                       </Select>
                     </FormControl>
                   </Grid>
                 </Grid>
-              </Grid>
-
-              {/* SECCIÓN 4: DETALLES ADICIONALES */}
-              <Grid item xs={12}>
-                <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 'bold', display: 'block', mb: 1 }}>Notas Médicas</Typography>
-                <TextField
-                  fullWidth
-                  label="Observaciones"
-                  multiline
-                  rows={3}
-                  size="small"
-                  value={formData.observaciones}
-                  disabled={viewMode}
-                  placeholder="Escriba aquí los detalles adicionales o indicaciones..."
-                  onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
-                />
-              </Grid>
-
-              {viewMode && selectedCita?.operador && (
-                <Grid item xs={12}>
-                  <Divider sx={{ my: 1 }} />
-                  <Typography variant="caption" color="text.secondary">
-                    Registro gestionado por: <strong>{selectedCita.operador.nombre}</strong>
-                  </Typography>
-                </Grid>
-              )}
-            </Grid>
+              </Paper>
+              
+              <TextField 
+                fullWidth 
+                label="Observaciones Médicas" 
+                multiline 
+                rows={4} 
+                value={formData.observaciones} 
+                disabled={viewMode} 
+                onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })} 
+                placeholder="Añadir notas relevantes sobre la cita..." 
+              />
+            </Box>
           </DialogContent>
-          <DialogActions sx={{ p: 2.5, bgcolor: '#f8f9fa' }}>
-            <Button onClick={handleCloseModal} variant="outlined" color="inherit">
-              {viewMode ? 'Cerrar' : 'Cancelar'}
-            </Button>
-            {!viewMode && (
-              <Button 
-                type="submit" 
-                variant="contained" 
-                color={selectedCita ? "primary" : "success"}
-                disabled={mutationCreate.isPending || mutationUpdate.isPending}
-                startIcon={selectedCita ? <EditIcon /> : <AddIcon />}
-              >
-                {selectedCita ? 'Actualizar Cita' : 'Confirmar Cita'}
-              </Button>
-            )}
+          <DialogActions sx={{ py: 3, px: 4, bgcolor: "#f8f9fa" }}>
+            <Button onClick={handleCloseModal} color="inherit" sx={{ px: 4 }}>{viewMode ? "Cerrar" : "Cancelar"}</Button>
+            {!viewMode && <Button type="submit" variant="contained" color={selectedCita ? "primary" : "success"} sx={{ px: 4 }}>{selectedCita ? "Actualizar Cita" : "Guardar Cita"}</Button>}
           </DialogActions>
         </form>
       </Dialog>

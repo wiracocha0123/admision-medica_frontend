@@ -11,19 +11,45 @@ const TURNOS = ['Mañana', 'Tarde', 'Noche'];
  * }
  */
 export default function HorarioSemanalPicker({ value, onChange, disabled = false }) {
-  // Aseguramos que siempre haya un objeto base
-  const safeValue = value || {};
+  // Normalizar el valor de entrada: si es un array [ { lunes: {...} } ], extraer el objeto.
+  // También manejamos si viene como string.
+  let normalizedValue = value;
+  if (typeof value === 'string') {
+    try {
+      normalizedValue = JSON.parse(value);
+    } catch (e) {
+      normalizedValue = {};
+    }
+  }
+  if (Array.isArray(normalizedValue)) {
+    normalizedValue = normalizedValue[0] || {};
+  }
+  
+  // Aseguramos que siempre sea un objeto y que las propiedades de día sean objetos, no strings.
+  const safeValue = { ...normalizedValue };
+  DIAS.forEach(dia => {
+    if (safeValue[dia] && typeof safeValue[dia] !== 'object') {
+       // Si era un string antiguo como "08:00-14:00", lo movemos a "Mañana" por defecto o limpiamos
+       safeValue[dia] = { "Mañana": safeValue[dia] };
+    } else if (!safeValue[dia]) {
+       safeValue[dia] = {};
+    }
+  });
 
   const handleTurnoChange = (dia, turno, isChecked) => {
     if (disabled) return;
     const newValue = { ...safeValue };
-    if (!newValue[dia]) newValue[dia] = {};
+    // Aseguramos que el día sea un objeto antes de asignar
+    if (!newValue[dia] || typeof newValue[dia] !== 'object') {
+      newValue[dia] = {};
+    }
 
     if (isChecked) {
-      // Default times for convenience, or just empty
-      newValue[dia][turno] = "00:00-00:00"; 
+      newValue[dia][turno] = "08:00-14:00"; 
     } else {
-      delete newValue[dia][turno];
+      const dayObj = { ...newValue[dia] };
+      delete dayObj[turno];
+      newValue[dia] = dayObj;
     }
     onChange(newValue);
   };

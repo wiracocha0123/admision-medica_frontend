@@ -85,6 +85,20 @@ export default function Personal() {
 
   const handleOpenEdit = (item = null) => {
     if (item) {
+      // Normalizar el horario desde el item
+      let normalizedHorario = item.horario_semanal;
+      if (typeof normalizedHorario === 'string') {
+        try {
+          normalizedHorario = JSON.parse(normalizedHorario);
+        } catch (e) {
+          normalizedHorario = {};
+        }
+      }
+      // Si es el formato [ { ... } ], extraer el objeto
+      if (Array.isArray(normalizedHorario)) {
+        normalizedHorario = normalizedHorario[0] || {};
+      }
+
       setFormData({
         id: item.id,
         nombres: item.nombres || '',
@@ -93,7 +107,7 @@ export default function Personal() {
         telefono: item.telefono || '',
         email: item.email || '',
         especialidad_id: item.especialidad_id || '',
-        horario_semanal: typeof item.horario_semanal === 'string' ? JSON.parse(item.horario_semanal) : (item.horario_semanal || {})
+        horario_semanal: normalizedHorario || {}
       });
     } else {
       setFormData({
@@ -112,12 +126,16 @@ export default function Personal() {
   const handleSave = (e) => {
     e.preventDefault();
     
-    // Aseguramos que el horario semanal se envíe como string JSON si el backend lo espera así
+    // Intentamos enviar el horario como un objeto puro si el backend lo procesa vía JSON
+    // Si esto falla con "Array to string conversion", el backend NECESITA el cast en el modelo.
+    const horarioFinal = Array.isArray(formData.horario_semanal) 
+      ? formData.horario_semanal 
+      : [formData.horario_semanal];
+
     const payload = {
       ...formData,
-      horario_semanal: typeof formData.horario_semanal === 'object' 
-        ? JSON.stringify(formData.horario_semanal) 
-        : formData.horario_semanal
+      // Quitamos cualquier procesamiento extra y enviamos el array limpio
+      horario_semanal: horarioFinal
     };
     
     saveMutation.mutate(payload);
@@ -183,7 +201,7 @@ export default function Personal() {
                    <TableCell>{p.email || '-'}</TableCell>
                    <TableCell><Chip label={p.especialidad?.UPS || 'Sin asignar'} size="small" /></TableCell>
                    <TableCell>
-                      <HorarioSemanalDisplay horario={horario} />
+                      <HorarioSemanalDisplay horario={p.horario_semanal} />
                    </TableCell>
                    <TableCell align="right">
                       <Stack direction="row" spacing={0.5} justifyContent="flex-end">

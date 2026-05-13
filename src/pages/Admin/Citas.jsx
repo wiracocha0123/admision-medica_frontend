@@ -7,7 +7,8 @@ import {
 } from "@mui/material";
 import { 
   Refresh as RefreshIcon, CalendarMonth as CalendarIcon, Edit as EditIcon, 
-  Delete as DeleteIcon, Visibility as VisibilityIcon, Add as AddIcon 
+  Delete as DeleteIcon, Visibility as VisibilityIcon, Add as AddIcon,
+  Search as SearchIcon, FilterList as FilterIcon
 } from "@mui/icons-material";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getCitas, createCita, updateCita, deleteCita } from "../../services/citasService";
@@ -24,6 +25,12 @@ export default function Citas() {
   const [openModal, setOpenModal] = useState(false);
   const [viewMode, setViewMode] = useState(false); 
   const [selectedCita, setSelectedCita] = useState(null);
+
+  // Estados para búsqueda y filtros
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterEstado, setFilterEstado] = useState("todos");
+  const [filterFecha, setFilterFecha] = useState("");
+  const [filterEspecialidad, setFilterEspecialidad] = useState("todas");
 
   const [formData, setFormData] = useState({
     paciente_id: "",
@@ -49,9 +56,10 @@ export default function Citas() {
       // Normalizamos para obtener solo el array de datos
       return Array.isArray(resp.data) ? resp.data : (Array.isArray(resp) ? resp : []);
     }),
-    staleTime: 5 * 60 * 1000, // Los datos se consideran frescos por 5 minutos
+    staleTime: 5 * 60 * 1000,
     cacheTime: 10 * 60 * 1000,
   });
+  const especialidadesList = Array.isArray(especialidadesData) ? especialidadesData : [];
 
   const { data: pacientesData } = useQuery({
     queryKey: ["pacientes_all"],
@@ -168,7 +176,24 @@ export default function Citas() {
   };
 
   const paginationData = citasData?.data || citasData || {};
-  const items = Array.isArray(paginationData.data) ? paginationData.data : (Array.isArray(paginationData) ? paginationData : []);
+  const allItems = Array.isArray(paginationData.data) ? paginationData.data : (Array.isArray(paginationData) ? paginationData : []);
+  
+  // Filtrado local (Considerando que el backend no soporta filtros por ahora)
+  const items = allItems.filter(cita => {
+    const matchesSearch = 
+      (cita.paciente?.nombre?.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (cita.paciente?.apellido?.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (cita.paciente?.dni?.includes(searchTerm));
+    
+    const matchesEstado = filterEstado === "todos" || cita.estado?.toLowerCase() === filterEstado.toLowerCase();
+    
+    const matchesFecha = !filterFecha || (cita.fecha && cita.fecha.startsWith(filterFecha));
+
+    const matchesEspecialidad = filterEspecialidad === "todas" || cita.especialidad_id?.toString() === filterEspecialidad.toString();
+
+    return matchesSearch && matchesEstado && matchesFecha && matchesEspecialidad;
+  });
+
   const totalPages = paginationData.last_page || 1;
 
   const getEstadoColor = (estado) => {
@@ -191,6 +216,86 @@ export default function Citas() {
           <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenCreate} color="primary">Nueva Cita</Button>
         </Box>
       </Stack>
+
+      <Paper variant="outlined" sx={{ p: 2, mb: 3, bgcolor: "#fcfcfc" }}>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} md={3}>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Buscar por paciente o DNI..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              slotProps={{
+                input: {
+                  startAdornment: <SearchIcon sx={{ color: "action.active", mr: 1 }} fontSize="small" />,
+                }
+              }}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={2}>
+            <TextField
+              select
+              fullWidth
+              size="small"
+              label="Estado"
+              value={filterEstado}
+              onChange={(e) => setFilterEstado(e.target.value)}
+            >
+              <MenuItem value="todos">Todos los estados</MenuItem>
+              <MenuItem value="pendiente">Pendiente</MenuItem>
+              <MenuItem value="completada">Completada</MenuItem>
+              <MenuItem value="cancelada">Cancelada</MenuItem>
+            </TextField>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <TextField
+              fullWidth
+              size="small"
+              type="date"
+              label="Filtrar por Fecha"
+              value={filterFecha}
+              onChange={(e) => setFilterFecha(e.target.value)}
+              slotProps={{ inputLabel: { shrink: true } }}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <TextField
+              select
+              fullWidth
+              size="small"
+              label="Especialidad"
+              value={filterEspecialidad}
+              onChange={(e) => setFilterEspecialidad(e.target.value)}
+            >
+              <MenuItem value="todas">Todas las especialidades</MenuItem>
+              {especialidadesList.map((esp) => (
+                <MenuItem key={esp.id} value={esp.id}>
+                  {esp.UPS}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Grid>
+          <Grid item xs={12} md={1}>
+            <Button 
+              fullWidth 
+              variant="text" 
+              size="small" 
+              color="inherit" 
+              onClick={() => { 
+                setSearchTerm(""); 
+                setFilterEstado("todos"); 
+                setFilterFecha(""); 
+                setFilterEspecialidad("todas");
+              }}
+              startIcon={<FilterIcon />}
+              sx={{ minWidth: 0 }}
+            >
+              Limpiar
+            </Button>
+          </Grid>
+        </Grid>
+      </Paper>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error.message || "Error al cargar citas"}</Alert>}
 

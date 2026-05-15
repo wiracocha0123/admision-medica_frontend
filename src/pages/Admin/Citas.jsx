@@ -3,7 +3,7 @@ import {
   Paper, Typography, Table, TableBody, TableCell, TableHead, TableRow, Button, Box, 
   CircularProgress, Alert, TableContainer, Skeleton, Chip, Pagination, Stack, Avatar, 
   IconButton, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, 
-  MenuItem, Grid, FormControl, InputLabel, Select, Divider
+  MenuItem, Grid, FormControl, InputLabel, Select, Divider, Autocomplete
 } from "@mui/material";
 import { 
   Refresh as RefreshIcon, CalendarMonth as CalendarIcon, Edit as EditIcon, 
@@ -84,6 +84,10 @@ export default function Citas() {
     onSuccess: () => {
       queryClient.invalidateQueries(["citas"]);
       handleCloseModal();
+    },
+    onError: (err) => {
+      console.error("Error al crear cita:", err);
+      alert("Error al crear la cita: " + (err.response?.data?.message || err.message));
     }
   });
 
@@ -92,6 +96,10 @@ export default function Citas() {
     onSuccess: () => {
       queryClient.invalidateQueries(["citas"]);
       handleCloseModal();
+    },
+    onError: (err) => {
+      console.error("Error al actualizar cita:", err);
+      alert("Error al actualizar la cita: " + (err.response?.data?.message || err.message));
     }
   });
 
@@ -121,12 +129,19 @@ export default function Citas() {
   const handleOpenEdit = (cita) => {
     setSelectedCita(cita);
     setViewMode(false);
+    
+    // Aseguramos que la hora solo tenga HH:mm para cumplir con la regex del backend
+    let horaInput = cita.hora || "";
+    if (horaInput.length > 5) {
+      horaInput = horaInput.substring(0, 5);
+    }
+
     setFormData({
-      paciente_id: cita.paciente_id || "",
-      personal_salud_id: cita.personal_salud_id || "",
-      especialidad_id: cita.especialidad_id || "",
+      paciente_id: cita.paciente?.id || cita.paciente_id || "",
+      personal_salud_id: cita.personal?.id || cita.personal_salud_id || "",
+      especialidad_id: cita.especialidad?.id || cita.especialidad_id || "",
       fecha: cita.fecha ? cita.fecha.split("T")[0] : "",
-      hora: cita.hora || "",
+      hora: horaInput,
       estado: cita.estado || "pendiente",
       observaciones: cita.observaciones || "",
       nro_ticket: cita.nro_ticket || ""
@@ -137,12 +152,18 @@ export default function Citas() {
   const handleOpenView = (cita) => {
     setSelectedCita(cita);
     setViewMode(true);
+
+    let horaInput = cita.hora || "";
+    if (horaInput.length > 5) {
+      horaInput = horaInput.substring(0, 5);
+    }
+
     setFormData({
-      paciente_id: cita.paciente_id || "",
-      personal_salud_id: cita.personal_salud_id || "",
-      especialidad_id: cita.especialidad_id || "",
+      paciente_id: cita.paciente?.id || cita.paciente_id || "",
+      personal_salud_id: cita.personal?.id || cita.personal_salud_id || "",
+      especialidad_id: cita.especialidad?.id || cita.especialidad_id || "",
       fecha: cita.fecha ? cita.fecha.split("T")[0] : "",
-      hora: cita.hora || "",
+      hora: horaInput,
       estado: cita.estado || "pendiente",
       observaciones: cita.observaciones || "",
       nro_ticket: cita.nro_ticket || ""
@@ -163,10 +184,22 @@ export default function Citas() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    
+    // El backend requiere estrictamente HH:mm según su regex
+    let formattedHora = formData.hora;
+    if (formattedHora && formattedHora.length > 5) {
+      formattedHora = formattedHora.substring(0, 5);
+    }
+
     const payload = {
-      ...formData,
-      operador_id: user?.id,
-      estado: formData.estado.toLowerCase()
+      paciente_id: formData.paciente_id,
+      personal_salud_id: formData.personal_salud_id,
+      especialidad_id: formData.especialidad_id,
+      fecha: formData.fecha,
+      hora: formattedHora,
+      estado: formData.estado.toLowerCase(),
+      observaciones: formData.observaciones,
+      operador_id: user?.id
     };
     if (selectedCita) {
       mutationUpdate.mutate(payload);
@@ -381,25 +414,25 @@ export default function Citas() {
                 <Typography variant="subtitle2" color="primary" sx={{ fontWeight: "bold", mb: 3, borderBottom: "2px solid #primary.main", pb: 1, textTransform: "uppercase", letterSpacing: 1 }}>DATOS DEL PACIENTE Y REGISTRO</Typography>
                 <Grid container spacing={3}>
                   <Grid item xs={12}>
-                    <FormControl sx={{ width: "100%", maxWidth: 650, minWidth: 220 }} required>
-                      <InputLabel>Paciente</InputLabel>
-                      <Select 
-                        value={formData.paciente_id} 
-                        label="Paciente" 
-                        disabled={viewMode} 
-                        onChange={(e) => setFormData({ ...formData, paciente_id: e.target.value })}
-                        sx={{ 
-                          width: "100%",
-                          ".MuiSelect-select": { py: 2 } 
-                        }}
-                      >
-                        {Array.isArray(pacientesData) && pacientesData.map(p => (
-                          <MenuItem key={p.id} value={p.id} sx={{ py: 1.5 }}>
-                            {p.nombre} {p.apellido} — DNI: {p.dni || p.documento}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
+                    <Autocomplete
+                      sx={{ minWidth: 230 }}
+                      options={Array.isArray(pacientesData) ? pacientesData : []}
+                      getOptionLabel={(p) => `${p.nombre} ${p.apellido} — DNI: ${p.dni || p.documento}`}
+                      value={Array.isArray(pacientesData) ? pacientesData.find(p => p.id === formData.paciente_id) || null : null}
+                      disabled={viewMode}
+                      onChange={(event, newValue) => {
+                        setFormData({ ...formData, paciente_id: newValue ? newValue.id : "" });
+                      }}
+                      renderInput={(params) => (
+                        <TextField 
+                          {...params} 
+                          label="Buscar Paciente" 
+                          required 
+                          placeholder="Escriba nombre o DNI..."
+                        />
+                      )}
+                      noOptionsText="No se encontraron pacientes"
+                    />
                   </Grid>
                   <Grid item xs={12}>
                     <TextField 
@@ -426,42 +459,44 @@ export default function Citas() {
                 <Typography variant="subtitle2" color="primary" sx={{ fontWeight: "bold", mb: 3, borderBottom: "2px solid #primary.main", pb: 1, textTransform: "uppercase", letterSpacing: 1 }}>ASIGNACIÓN MÉDICA</Typography>
                 <Grid container spacing={3}>
                   <Grid item xs={12}>
-                    <FormControl sx={{ width: "100%", maxWidth: 650, minWidth: 220 }} required>
-                      <InputLabel>Médico Tratante</InputLabel>
-                      <Select 
-                        value={formData.personal_salud_id} 
-                        label="Médico Tratante" 
-                        disabled={viewMode} 
-                        onChange={(e) => setFormData({ ...formData, personal_salud_id: e.target.value })}
-                        sx={{ 
-                          width: "100%",
-                          ".MuiSelect-select": { py: 2 } 
-                        }}
-                      >
-                        {Array.isArray(personalData) && personalData.map(p => (
-                          <MenuItem key={p.id} value={p.id} sx={{ py: 1.5 }}>{p.nombres} {p.apellidos}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
+                    <Autocomplete
+                      sx={{ minWidth: 230 }}
+                      options={Array.isArray(personalData) ? personalData : []}
+                      getOptionLabel={(p) => `${p.nombres} ${p.apellidos}`}
+                      value={Array.isArray(personalData) ? personalData.find(p => p.id === formData.personal_salud_id) || null : null}
+                      disabled={viewMode}
+                      onChange={(event, newValue) => {
+                        setFormData({ ...formData, personal_salud_id: newValue ? newValue.id : "" });
+                      }}
+                      renderInput={(params) => (
+                        <TextField 
+                          {...params} 
+                          label="Buscar Médico Tratante" 
+                          required 
+                        />
+                      )}
+                      noOptionsText="No se encontró personal de salud"
+                    />
                   </Grid>
                   <Grid item xs={12}>
-                    <FormControl sx={{ width: "100%", maxWidth: 650, minWidth: 220 }} required>
-                      <InputLabel>Especialidad</InputLabel>
-                      <Select 
-                        value={formData.especialidad_id} 
-                        label="Especialidad"
-                        disabled={viewMode} 
-                        onChange={(e) => setFormData({ ...formData, especialidad_id: e.target.value })}
-                        sx={{ 
-                          width: "100%",
-                          ".MuiSelect-select": { py: 2 } 
-                        }}
-                      >
-                        {Array.isArray(especialidadesData) && especialidadesData.map(esp => (
-                          <MenuItem key={esp.id} value={esp.id} sx={{ py: 1.5 }}>{esp.UPS} — {esp.nombre_especialidad}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
+                    <Autocomplete
+                      sx={{ minWidth: 230 }}
+                      options={Array.isArray(especialidadesData) ? especialidadesData : []}
+                      getOptionLabel={(esp) => `${esp.UPS} — ${esp.especialidad}`}
+                      value={Array.isArray(especialidadesData) ? especialidadesData.find(esp => esp.id === formData.especialidad_id) || null : null}
+                      disabled={viewMode}
+                      onChange={(event, newValue) => {
+                        setFormData({ ...formData, especialidad_id: newValue ? newValue.id : "" });
+                      }}
+                      renderInput={(params) => (
+                        <TextField 
+                          {...params} 
+                          label="Buscar Especialidad" 
+                          required 
+                        />
+                      )}
+                      noOptionsText="No se encontraron especialidades"
+                    />
                   </Grid>
                 </Grid>
               </Paper>

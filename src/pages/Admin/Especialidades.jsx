@@ -55,8 +55,8 @@ export default function Especialidades() {
           <TableHead>
             <TableRow>
               <TableCell>ID</TableCell>
-              <TableCell>Nombre Especialidad</TableCell>
-              <TableCell>Descripción</TableCell>
+              <TableCell>UPS</TableCell>
+              <TableCell>Especialidad</TableCell>
               
             </TableRow>
           </TableHead>
@@ -71,8 +71,8 @@ export default function Especialidades() {
               items.map((esp) => (
                 <TableRow key={esp.id}>
                   <TableCell>{esp.id}</TableCell>
-                  <TableCell fontWeight="bold">{esp.UPS} - {esp.especialidad}</TableCell>
-                  <TableCell>{esp.descripcion || 'Sin descripción'}</TableCell>
+                  <TableCell fontWeight="bold">{esp.UPS}</TableCell>
+                  <TableCell>{esp.especialidad}</TableCell>
                   
                 </TableRow>
               ))

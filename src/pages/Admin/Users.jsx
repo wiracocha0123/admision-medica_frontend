@@ -1,5 +1,5 @@
 import React, { useState, useContext } from 'react';
-import { Paper, Typography, Table, TableBody, TableCell, TableHead, TableRow, Button, Box, CircularProgress, TableContainer, Skeleton, Stack, Pagination } from '@mui/material';
+import { Paper, Typography, Table, TableBody, TableCell, TableHead, TableRow, Button, Box, Avatar, CircularProgress, TableContainer, Skeleton, Stack, Pagination } from '@mui/material';
 import { Refresh as RefreshIcon } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import { getUsers } from '../../services/usersService';
@@ -33,7 +33,7 @@ export default function Users() {
           <TableHead>
             <TableRow>
               <TableCell>ID</TableCell>
-              <TableCell>Nombre</TableCell>
+              <TableCell>Nombres y apellidos</TableCell>
               <TableCell>Email</TableCell>
               <TableCell>Rol</TableCell>
               <TableCell>Registrado</TableCell>
@@ -50,7 +50,14 @@ export default function Users() {
               items.map((u) => (
                 <TableRow key={u.id}>
                   <TableCell>{u.id}</TableCell>
-                  <TableCell>{u.name}</TableCell>
+                  <TableCell>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                          <Avatar sx={{ width: 28, height: 28, fontSize: "0.75rem", bgcolor: "primary.main" }}>
+                                      {u.name?.[0] || "P"}
+                          </Avatar>
+                          <Typography variant="body2">{u.name}</Typography>
+                    </Box>
+                  </TableCell>
                   <TableCell>{u.email}</TableCell>
                   <TableCell sx={{ textTransform: 'capitalize' }}>
                     {u.role || (u.roles && (Array.isArray(u.roles) ? u.roles[0]?.name : u.roles)) || '-'}

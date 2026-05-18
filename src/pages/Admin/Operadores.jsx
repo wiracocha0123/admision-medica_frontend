@@ -1,5 +1,5 @@
 import React, { useState, useContext } from 'react';
-import { Paper, Typography, Table, TableBody, TableCell, TableHead, TableRow, Button, Box, CircularProgress, TableContainer, Dialog, DialogTitle, DialogContent, DialogActions, TextField, IconButton, Tooltip, Stack, Skeleton, Pagination } from '@mui/material';
+import { Paper, Typography, Table, TableBody, TableCell, TableHead, TableRow, Button, Box, Avatar, CircularProgress, TableContainer, Dialog, DialogTitle, DialogContent, DialogActions, TextField, IconButton, Tooltip, Stack, Skeleton, Pagination } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Visibility as VisibilityIcon, Refresh as RefreshIcon } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getOperadores, createOperador, updateOperador, deleteOperador } from '../../services/operadoresService';
@@ -135,8 +135,8 @@ export default function Operadores() {
           <TableHead>
             <TableRow>
               <TableCell>ID</TableCell>
-              <TableCell>Nombre</TableCell>
-              <TableCell>Apellido</TableCell>
+              <TableCell>Nombres y apellios</TableCell>
+              
               <TableCell>Usuario</TableCell>
               <TableCell>Horario</TableCell>
               <TableCell align="right">Acciones</TableCell>
@@ -153,8 +153,15 @@ export default function Operadores() {
               items.map((it) => (
                 <TableRow key={it.id || it.pk || it.operador_id} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
                   <TableCell>{it.id || it.pk || it.operador_id}</TableCell>
-                  <TableCell>{it.nombre || it.name}</TableCell>
-                  <TableCell>{it.apellido || it.apellidos || '-'}</TableCell>
+                  <TableCell>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                          <Avatar sx={{ width: 28, height: 28, fontSize: "0.75rem", bgcolor: "primary.main" }}>
+                                      {it.nombre?.[0] || "P"}
+                          </Avatar>
+                          <Typography variant="body2">{it.nombre} {it.apellido}</Typography>
+                    </Box>
+                  </TableCell>
+                  
                   <TableCell>{it.usuario || it.user}</TableCell>
                   <TableCell><HorarioSemanalDisplay horario={it.horario_semanal} /></TableCell>
                   <TableCell align="right">

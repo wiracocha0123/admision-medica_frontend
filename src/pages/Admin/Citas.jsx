@@ -1,17 +1,18 @@
-﻿import React, { useState, useContext } from "react";
+﻿import React, { useState, useContext, useEffect } from "react";
 import { 
   Paper, Typography, Table, TableBody, TableCell, TableHead, TableRow, Button, Box, 
   CircularProgress, Alert, TableContainer, Skeleton, Chip, Pagination, Stack, Avatar, 
-  IconButton, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, 
-  MenuItem, Grid, FormControl, InputLabel, Select, Divider, Autocomplete
+  IconButton, Tooltip, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, TextField, 
+  MenuItem, Grid, FormControl, InputLabel, Select, Divider, Autocomplete, InputAdornment
 } from "@mui/material";
 import { 
   Refresh as RefreshIcon, CalendarMonth as CalendarIcon, Edit as EditIcon, 
   Delete as DeleteIcon, Visibility as VisibilityIcon, Add as AddIcon,
-  Search as SearchIcon, FilterList as FilterIcon
+  Search as SearchIcon, FilterList as FilterIcon, Settings as SettingsIcon
 } from "@mui/icons-material";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getCitas, createCita, updateCita, deleteCita } from "../../services/citasService";
+import api from "../../api"; // Asegúrate de importar la instancia configurada de api
 import { getPacientes } from "../../services/pacientesService";
 import { getPersonalSalud } from "../../services/personalService";
 import { getEspecialidades } from "../../services/especialidadesService";
@@ -26,6 +27,14 @@ export default function Citas() {
   const [viewMode, setViewMode] = useState(false); 
   const [selectedCita, setSelectedCita] = useState(null);
 
+  // Estado para confirmación de eliminación
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [citaToDelete, setCitaToDelete] = useState(null);
+
+  // Estados para modal de error/validación
+  const [errorModalOpen, setErrorModalOpen] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
   // Estados para búsqueda y filtros
   const [searchTerm, setSearchTerm] = useState("");
   const [filterEstado, setFilterEstado] = useState("todos");
@@ -36,12 +45,69 @@ export default function Citas() {
     paciente_id: "",
     personal_salud_id: "",
     especialidad_id: "",
-    fecha: "",
+    fecha: new Date().toLocaleDateString('en-CA'),
     hora: "",
     estado: "pendiente",
     observaciones: "",
-    nro_ticket: ""
+    nro_ticket: "",
+    total_tickets_dia: 16
   });
+
+  const [globalTotalTickets, setGlobalTotalTickets] = useState(16);
+  
+  // Usar una función para obtener hoy en formato Local de Perú/Sistema para evitar saltos de día por UTC
+  const getTodayStr = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const hoyStr = getTodayStr();
+
+  // 1. Obtener última capacidad configurada para hoy (para persistencia)
+  const { data: initialCapacidad } = useQuery({
+    queryKey: ["capacidad-inicial", hoyStr],
+    queryFn: async () => {
+      try {
+        const res = await api.get(`/citas?page=all&fecha=${hoyStr}`);
+        const responseData = res.data?.data?.data || res.data?.data || res.data || [];
+        const itemsList = Array.isArray(responseData) ? responseData : [];
+        if (itemsList.length > 0) {
+          // Si hay citas, tomamos el total_tickets_dia de la primera
+          return parseInt(itemsList[0].total_tickets_dia) || 16;
+        }
+        return 16;
+      } catch (err) { return 16; }
+    },
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  useEffect(() => {
+    if (initialCapacidad) {
+      setGlobalTotalTickets(initialCapacidad);
+    }
+  }, [initialCapacidad]);
+
+  // Consulta para verificar si ya hay citas hoy y bloquear la edición del límite
+  const { data: hasCitasHoyServer, refetch: refetchCheckHoy } = useQuery({
+    queryKey: ["check-citas-hoy", hoyStr],
+    queryFn: async () => {
+      try {
+        const res = await api.get(`/citas?page=all&fecha=${hoyStr}`);
+        const responseData = res.data?.data?.data || res.data?.data || res.data || [];
+        const itemsList = Array.isArray(responseData) ? responseData : [];
+        return itemsList.length > 0;
+      } catch (err) { return false; }
+    },
+    enabled: !!user,
+    staleTime: 0
+  });
+
+  // Usamos una variable local para el estado de bloqueo
+  const isLocked = hasCitasHoyServer || false;
 
   const { data: citasData, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ["citas", currentPage],
@@ -82,31 +148,60 @@ export default function Citas() {
   const mutationCreate = useMutation({
     mutationFn: createCita,
     onSuccess: () => {
-      queryClient.invalidateQueries(["citas"]);
+      // Invalidamos inmediatamente para que el usuario vea el cambio
+      queryClient.invalidateQueries({ queryKey: ["citas"] });
+      queryClient.invalidateQueries({ queryKey: ["tickets-dia"] });
+      queryClient.invalidateQueries({ queryKey: ["check-citas-hoy"] }); // Re-identificamos que hoy ya tiene actividad
       handleCloseModal();
     },
     onError: (err) => {
-      console.error("Error al crear cita:", err);
-      alert("Error al crear la cita: " + (err.response?.data?.message || err.message));
+      let msg = err.response?.data?.message || err.message;
+      if (msg.includes('already been taken')) {
+        msg = 'Este número de ticket ya está ocupado para esta fecha.';
+      } else if (msg.includes('paciente_id')) {
+        msg = 'Debe seleccionar un paciente válido.';
+      }
+      setErrorMessage(msg);
+      setErrorModalOpen(true);
     }
   });
 
   const mutationUpdate = useMutation({
     mutationFn: (data) => updateCita(selectedCita.id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries(["citas"]);
+      queryClient.invalidateQueries({ queryKey: ["citas"] });
+      queryClient.invalidateQueries({ queryKey: ["tickets-dia"] });
       handleCloseModal();
     },
     onError: (err) => {
-      console.error("Error al actualizar cita:", err);
-      alert("Error al actualizar la cita: " + (err.response?.data?.message || err.message));
+      let msg = err.response?.data?.message || err.message;
+      if (msg.includes('already been taken')) {
+        msg = 'Este número de ticket ya está ocupado para esta fecha.';
+      }
+      setErrorMessage(msg);
+      setErrorModalOpen(true);
     }
   });
 
   const mutationDelete = useMutation({
     mutationFn: deleteCita,
-    onSuccess: () => {
-      queryClient.invalidateQueries(["citas"]);
+    onSuccess: async () => {
+      // Invalida todas las consultas para asegurar que no quede nada en cache
+      await queryClient.invalidateQueries({ queryKey: ["citas"] });
+      await queryClient.invalidateQueries({ queryKey: ["tickets-dia"] });
+      await queryClient.invalidateQueries({ queryKey: ["check-citas-hoy"] });
+      
+      // Forzar un refetch real y esperar a que complete
+      await refetch();
+      
+      // Limpiar el estado de eliminación
+      setDeleteConfirmOpen(false);
+      setCitaToDelete(null);
+    },
+    onError: (err) => {
+      setErrorMessage("Error al eliminar la cita: " + (err.response?.data?.message || err.message));
+      setErrorModalOpen(true);
+      setDeleteConfirmOpen(false);
     }
   });
 
@@ -117,14 +212,52 @@ export default function Citas() {
       paciente_id: "",
       personal_salud_id: "",
       especialidad_id: "",
-      fecha: "",
+      fecha: getTodayStr(),
       hora: "",
       estado: "pendiente",
       observaciones: "",
-      nro_ticket: ""
+      nro_ticket: "",
+      total_tickets_dia: globalTotalTickets
     });
     setOpenModal(true);
   };
+
+  // Obtener tickets del día para autoincrementar real
+  const { data: infoTicketsDia = { ocupados: [], total: 16, sugerido: 1 }, isLoading: isLoadingTickets } = useQuery({
+    queryKey: ["tickets-dia", formData.fecha], // Quitamos personal_salud_id de la dependencia
+    queryFn: async () => {
+      if (!formData.fecha) {
+        return { ocupados: [], total: 16, sugerido: 1 };
+      }
+      try {
+        const res = await api.get(`/citas/next-ticket?fecha=${formData.fecha}`);
+        const data = res.data?.data || {};
+        
+        return { 
+          ocupados: [],
+          total: data.total_tickets_dia || 16,
+          sugerido: data.next_ticket || 1
+        };
+      } catch (err) {
+        console.error("Error obteniendo siguiente ticket:", err);
+        return { ocupados: [], total: 16, sugerido: 1 };
+      }
+    },
+    enabled: !!formData.fecha && openModal,
+    refetchOnWindowFocus: true,
+    staleTime: 0
+  });
+
+  // Efecto para sincronizar el nro_ticket cuando infoTicketsDia cambie
+  useEffect(() => {
+    if (openModal && !selectedCita && infoTicketsDia?.sugerido) {
+      setFormData(prev => ({ 
+        ...prev, 
+        nro_ticket: infoTicketsDia.sugerido,
+        total_tickets_dia: infoTicketsDia.total
+      }));
+    }
+  }, [infoTicketsDia?.sugerido, infoTicketsDia?.total, openModal, selectedCita]);
 
   const handleOpenEdit = (cita) => {
     setSelectedCita(cita);
@@ -177,13 +310,45 @@ export default function Citas() {
   };
 
   const handleDelete = (id) => {
-    if (window.confirm("¿Está seguro de eliminar esta cita?")) {
-      mutationDelete.mutate(id);
+    setCitaToDelete(id);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if (citaToDelete) {
+      mutationDelete.mutate(citaToDelete);
+      setDeleteConfirmOpen(false);
+      setCitaToDelete(null);
     }
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
+
+    // Validaciones manuales antes de enviar
+    if (!formData.paciente_id) {
+      setErrorMessage('Debe seleccionar un paciente para la cita.');
+      setErrorModalOpen(true);
+      return;
+    }
+
+    if (!formData.fecha) {
+      setErrorMessage('La fecha de la cita es obligatoria.');
+      setErrorModalOpen(true);
+      return;
+    }
+
+    if (!formData.especialidad_id) {
+      setErrorMessage('Debe seleccionar la especialidad (UPS).');
+      setErrorModalOpen(true);
+      return;
+    }
+
+    if (!formData.nro_ticket) {
+      setErrorMessage('El número de ticket es obligatorio.');
+      setErrorModalOpen(true);
+      return;
+    }
     
     // El backend requiere estrictamente HH:mm según su regex
     let formattedHora = formData.hora;
@@ -191,14 +356,31 @@ export default function Citas() {
       formattedHora = formattedHora.substring(0, 5);
     }
 
+    // Si el ticket no es un número, intentar usar el sugerido de la query como último recurso
+    let ticketValue = parseInt(formData.nro_ticket);
+    const totalValue = parseInt(globalTotalTickets);
+
+    if (isNaN(ticketValue) && infoTicketsDia?.sugerido) {
+      ticketValue = parseInt(infoTicketsDia.sugerido);
+    }
+
+    if (isNaN(ticketValue)) {
+      setErrorMessage("Error: El número de ticket no se ha generado correctamente. Por favor, asegúrese de seleccionar una fecha.");
+      setErrorModalOpen(true);
+      return;
+    }
+
+    // Si es edición, permitimos que algunos campos sean opcionales si ya tenían datos
     const payload = {
       paciente_id: formData.paciente_id,
-      personal_salud_id: formData.personal_salud_id,
-      especialidad_id: formData.especialidad_id,
+      personal_salud_id: formData.personal_salud_id || null,
+      especialidad_id: formData.especialidad_id || null,
       fecha: formData.fecha,
-      hora: formattedHora,
+      hora: formattedHora || null,
       estado: formData.estado.toLowerCase(),
       observaciones: formData.observaciones,
+      nro_ticket: ticketValue,
+      total_tickets_dia: totalValue,
       operador_id: user?.id
     };
     if (selectedCita) {
@@ -244,14 +426,40 @@ export default function Citas() {
         <Typography variant="h5" sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           <CalendarIcon /> Gestión de Citas {isFetching && <CircularProgress size={20} />}
         </Typography>
-        <Box sx={{ display: "flex", gap: 1 }}>
+        <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
+          <Tooltip title={isLocked ? "No se puede cambiar el límite porque ya se emitieron tickets hoy" : "Establecer límite de atención para hoy"}>
+            <TextField
+              label="Capacidad Diaria"
+              type="number"
+              size="small"
+              value={globalTotalTickets}
+              onChange={(e) => setGlobalTotalTickets(parseInt(e.target.value) || 1)}
+              disabled={isLocked}
+              sx={{ 
+                width: 150,
+                "& .MuiInputBase-input.Mui-disabled": {
+                  WebkitTextFillColor: "#d32f2f",
+                  fontWeight: "bold"
+                }
+              }}
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SettingsIcon fontSize="small" color={isLocked ? "error" : "action"} />
+                    </InputAdornment>
+                  ),
+                }
+              }}
+            />
+          </Tooltip>
           <Button variant="outlined" startIcon={<RefreshIcon />} onClick={() => refetch()} disabled={isFetching}>Actualizar</Button>
           <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenCreate} color="primary">Nueva Cita</Button>
         </Box>
       </Stack>
 
       <Paper variant="outlined" sx={{ p: 2, mb: 3, bgcolor: "#fcfcfc" }}>
-        <Grid container spacing={2} alignItems="center">
+        <Grid container spacing={2} sx={{ alignItems: "center" }}>
           <Grid item xs={12} md={3}>
             <TextField
               fullWidth
@@ -342,6 +550,8 @@ export default function Citas() {
               <TableCell>Fecha y Hora</TableCell>
               <TableCell>Operador</TableCell>
               <TableCell>Estado</TableCell>
+              <TableCell>N° de ticket</TableCell>
+              <TableCell>Observaciones</TableCell>
               <TableCell align="center">Acciones</TableCell>
             </TableRow>
           </TableHead>
@@ -373,18 +583,30 @@ export default function Citas() {
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2" fontWeight="bold">
-                      {cita.fecha ? new Date(cita.fecha).toLocaleDateString() : "-"}
+                      {(() => {
+                        if (!cita.fecha) return "-";
+                        // Limpiamos la fecha por si viene con la parte de la hora (ISO string)
+                        const cleanDate = cita.fecha.split("T")[0];
+                        const dateObj = new Date(cleanDate + "T00:00:00");
+                        return isNaN(dateObj) ? cita.fecha : dateObj.toLocaleDateString();
+                      })()}
                       <Box component="span" sx={{ display: "block", fontSize: "0.75rem", color: "text.secondary", fontWeight: "normal" }}>
                          {cita.hora || "-"}
                       </Box>
                     </Typography>
                   </TableCell>
-                  <TableCell><Typography variant="body2">{cita.operador?.nombre || cita.operador?.name || "Admin"} </Typography></TableCell>
+                  <TableCell><Typography variant="body2">{cita.operador?.nombre || cita.operador?.name} {cita.operador?.apellido}</Typography></TableCell>
                   <TableCell>
                     <Chip label={cita.estado || "pendiente"} color={getEstadoColor(cita.estado)} size="small" sx={{ minWidth: 80, fontSize: "0.7rem", textTransform: "capitalize" }} />
                   </TableCell>
+                  <TableCell>
+                      <Chip label={cita.nro_ticket}/>
+                  </TableCell>
+                  <TableCell>
+                      <Chip label={cita.observaciones  || "Ninguna observación" } />
+                  </TableCell>
                   <TableCell align="center">
-                    <Stack direction="row" spacing={0.5} justifyContent="center">
+                    <Stack direction="row" spacing={0.5} sx={{ justifyContent: "center" }}>
                       <IconButton size="small" color="info" onClick={() => handleOpenView(cita)}><VisibilityIcon fontSize="small" /></IconButton>
                       <IconButton size="small" color="primary" onClick={() => handleOpenEdit(cita)}><EditIcon fontSize="small" /></IconButton>
                       <IconButton size="small" color="error" onClick={() => handleDelete(cita.id)}><DeleteIcon fontSize="small" /></IconButton>
@@ -402,7 +624,7 @@ export default function Citas() {
       </Box>
 
       <Dialog open={openModal} onClose={handleCloseModal} maxWidth="md" fullWidth>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} noValidate>
           <DialogTitle sx={{ bgcolor: viewMode ? "info.main" : (selectedCita ? "primary.main" : "success.main"), color: "white", py: 2, display: "flex", alignItems: "center", gap: 1 }}>
             <CalendarIcon />
             {viewMode ? "Detalles de la Cita" : (selectedCita ? "Modificar Cita" : "Programar Nueva Cita")}
@@ -427,14 +649,13 @@ export default function Citas() {
                         <TextField 
                           {...params} 
                           label="Buscar Paciente" 
-                          required 
                           placeholder="Escriba nombre o DNI..."
                         />
                       )}
                       noOptionsText="No se encontraron pacientes"
                     />
                   </Grid>
-                  <Grid item xs={12}>
+                  <Grid item xs={12} sm={6}>
                     <TextField 
                       fullWidth 
                       label="Operador del Sistema" 
@@ -443,13 +664,14 @@ export default function Citas() {
                       slotProps={{ input: { readOnly: true, sx: { bgcolor: "#f5f5f5" } } }} 
                     />
                   </Grid>
-                  <Grid item xs={12}>
+                  <Grid item xs={12} sm={6}>
                     <TextField 
-                      fullWidth 
-                      label="N° Ticket de Atención" 
-                      value={formData.nro_ticket} 
-                      disabled={viewMode} 
-                      onChange={(e) => setFormData({ ...formData, nro_ticket: e.target.value })} 
+                      fullWidth
+                      label="N° Ticket Asignado"
+                      value={formData.fecha ? `Ticket ${formData.nro_ticket} / ${globalTotalTickets}` : "Seleccione fecha..."}
+                      disabled
+                      slotProps={{ input: { readOnly: true, sx: { bgcolor: "#e3f2fd", fontWeight: "bold", color: "primary.dark" } } }}
+                      helperText={formData.nro_ticket > globalTotalTickets ? "¡Aviso: Cupo extra!" : "Asignación automática"}
                     />
                   </Grid>
                 </Grid>
@@ -472,7 +694,6 @@ export default function Citas() {
                         <TextField 
                           {...params} 
                           label="Buscar Médico Tratante" 
-                          required 
                         />
                       )}
                       noOptionsText="No se encontró personal de salud"
@@ -492,7 +713,6 @@ export default function Citas() {
                         <TextField 
                           {...params} 
                           label="Buscar Especialidad" 
-                          required 
                         />
                       )}
                       noOptionsText="No se encontraron especialidades"
@@ -509,7 +729,6 @@ export default function Citas() {
                       fullWidth 
                       label="Fecha de la Cita" 
                       type="date" 
-                      required 
                       slotProps={{ inputLabel: { shrink: true } }} 
                       value={formData.fecha} 
                       disabled={viewMode} 
@@ -521,7 +740,6 @@ export default function Citas() {
                       fullWidth 
                       label="Hora de Atención" 
                       type="time" 
-                      required 
                       slotProps={{ inputLabel: { shrink: true } }} 
                       value={formData.hora} 
                       disabled={viewMode} 
@@ -563,6 +781,54 @@ export default function Citas() {
             {!viewMode && <Button type="submit" variant="contained" color={selectedCita ? "primary" : "success"} sx={{ px: 4 }}>{selectedCita ? "Actualizar Cita" : "Guardar Cita"}</Button>}
           </DialogActions>
         </form>
+      </Dialog>
+
+      {/* Modal de Alerta/Error */}
+      <Dialog 
+        open={errorModalOpen} 
+        onClose={() => setErrorModalOpen(false)}
+      >
+        <DialogTitle sx={{ bgcolor: 'error.main', color: 'white', fontWeight: 'bold' }}>
+          Validación de Cita
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          <DialogContentText>
+            {errorMessage}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button 
+            onClick={() => setErrorModalOpen(false)} 
+            variant="contained" 
+            color="error"
+            fullWidth
+          >
+            Entendido
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Modal de Confirmación de Eliminación */}
+      <Dialog
+        open={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+      >
+        <DialogTitle sx={{ bgcolor: 'error.main', color: 'white' }}>
+          Confirmar Eliminación
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          <DialogContentText>
+            ¿Está seguro de que desea eliminar esta cita? Esta acción no se puede deshacer.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteConfirmOpen(false)} color="inherit">
+            Cancelar
+          </Button>
+          <Button onClick={confirmDelete} color="error" variant="contained">
+            Eliminar
+          </Button>
+        </DialogActions>
       </Dialog>
     </Paper>
   );

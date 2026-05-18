@@ -134,9 +134,12 @@ export default function Reportes() {
                             items.map((it) => (
                                 <TableRow key={it.id} hover>
                                     <TableCell>
-                                        <Typography variant="body2" fontWeight="bold">
-                                            {it.nombres} {it.apellidos}
-                                        </Typography>
+                                        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                                            <Avatar sx={{ width: 28, height: 28, fontSize: "0.75rem", bgcolor: "primary.main" }}>
+                                                        {it.nombres?.[0] || "P"}
+                                            </Avatar>
+                                            <Typography variant="body2">{it.nombres} {it.apellidos}</Typography>
+                                        </Box>
                                     </TableCell>
                                     <TableCell>
                                         <Typography variant="body2">{it.especialidad?.especialidad || 'General'}</Typography>

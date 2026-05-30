@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Typography, Paper, Grid, Box, CircularProgress, Stack, Skeleton, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
+import { Typography, Paper, Grid, Box, CircularProgress, Stack, Skeleton, FormControl, InputLabel, Select, MenuItem, List, ListItem, ListItemText, ListItemAvatar, Avatar, Divider } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { getPersonalSalud } from '../../services/personalService';
 import { getOperadores } from '../../services/operadoresService';
@@ -100,6 +100,14 @@ export default function Dashboard() {
     // Ya lo normalizamos en la queryFn, pero por seguridad:
     return Array.isArray(allAppointments) ? allAppointments : [];
   }, [allAppointments]);
+
+  const recentPatients = useMemo(() => {
+    const data = patients?.data?.data || patients?.data || patients || [];
+    const list = Array.isArray(data) ? data : [];
+    return [...list]
+      .sort((a, b) => (b.id || 0) - (a.id || 0)) // Asumiendo que IDs más altos son más recientes
+      .slice(0, 5); // Tomar solo los 5 más recientes
+  }, [patients]);
 
   const filteredCitas = useMemo(() => {
     if (selectedStaff === 'all') return appointmentsList;
@@ -386,8 +394,8 @@ export default function Dashboard() {
           </Grid>
 
           {/* Gráfico de Líneas - Distribución Horaria */}
-          <Grid size={12}>
-            <Paper sx={{ p: 4, borderRadius: 3, boxShadow: '0 10px 30px rgba(0,0,0,0.05)', minHeight: 400 }}>
+          <Grid size={{ xs: 12, md: 8 }}>
+            <Paper sx={{ p: 4, borderRadius: 3, boxShadow: '0 10px 30px rgba(0,0,0,0.05)', height: '100%', minHeight: 450 }}>
               <Typography variant="h6" fontWeight={700}>
                 Distribución Horaria de Afluencia
               </Typography>
@@ -438,6 +446,71 @@ export default function Dashboard() {
                   </ResponsiveContainer>
                 )}
               </Box>
+            </Paper>
+          </Grid>
+
+          {/* Lista de Últimos Pacientes */}
+          <Grid size={{ xs: 12, md: 4 }}>
+            <Paper sx={{ p: 4, borderRadius: 3, boxShadow: '0 10px 30px rgba(0,0,0,0.05)', height: '100%', minHeight: 450 }}>
+              <Typography variant="h6" fontWeight={700} gutterBottom>
+                Últimos Pacientes
+              </Typography>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+                Recientemente registrados en el sistema
+              </Typography>
+
+              {l3 ? (
+                <Stack spacing={2}>
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Skeleton variant="circular" width={40} height={40} />
+                      <Box sx={{ flex: 1 }}>
+                        <Skeleton variant="text" width="80%" />
+                        <Skeleton variant="text" width="40%" />
+                      </Box>
+                    </Box>
+                  ))}
+                </Stack>
+              ) : (
+                <List sx={{ width: '100%', bgcolor: 'background.paper', p: 0 }}>
+                  {recentPatients.length > 0 ? (
+                    recentPatients.map((patient, index) => (
+                      <React.Fragment key={patient.id}>
+                        <ListItem alignItems="flex-start" sx={{ px: 0, py: 1.5 }}>
+                          <ListItemAvatar>
+                            <Avatar sx={{ bgcolor: COLORS[index % COLORS.length] }}>
+                              {(patient.nombre || 'P')[0]}
+                            </Avatar>
+                          </ListItemAvatar>
+                          <ListItemText
+                            primary={
+                              <Typography variant="body2" fontWeight={600}>
+                                {patient.nombre} {patient.apellido}
+                              </Typography>
+                            }
+                            secondary={
+                              <>
+                                <Typography component="span" variant="caption" color="text.primary">
+                                  DNI: {patient.dni || patient.documento || '---'}
+                                </Typography>
+                                <br />
+                                <Typography component="span" variant="caption" color="text.secondary">
+                                  {patient.celular || patient.telefono || 'Sin teléfono'}
+                                </Typography>
+                              </>
+                            }
+                          />
+                        </ListItem>
+                        {index < recentPatients.length - 1 && <Divider variant="inset" component="li" />}
+                      </React.Fragment>
+                    ))
+                  ) : (
+                    <Box sx={{ py: 4, textAlign: 'center' }}>
+                      <Typography variant="body2" color="text.secondary">No hay pacientes registrados</Typography>
+                    </Box>
+                  )}
+                </List>
+              )}
             </Paper>
           </Grid>
         </Grid>

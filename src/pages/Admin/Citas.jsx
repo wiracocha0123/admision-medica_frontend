@@ -171,17 +171,27 @@ export default function Citas() {
       }, 100);
     },
     onError: (err) => {
-      let msg = err.response?.data?.message || err.message;
-      if (msg.includes('already been taken')) {
-        msg = 'Este número de ticket ya está ocupado para esta fecha.';
-      } else if (msg.includes('paciente_id')) {
-        msg = 'Debe seleccionar un paciente válido.';
-      }
+      console.error("DEBUG - Error completo del servidor:", err.response?.data);
+      console.error("DEBUG - Status code:", err.response?.status);
       
+      let msg = err.response?.data?.message || err.message || "Error desconocido en el servidor";
+      
+      // Si el error es 500, a veces el mensaje viene en err.response.data (si es texto plano o un JSON de error de Laravel)
+      const serverData = err.response?.data;
+      if (typeof serverData === 'string' && serverData.includes('SQLSTATE')) {
+        msg = "Error de base de datos. Verifique que todos los campos sean correctos.";
+      }
+
+      if (serverData?.errors) {
+        const errors = serverData.errors;
+        msg = Object.values(errors).flat().join("\n");
+      }
+
       Swal.fire({
         icon: 'error',
-        title: 'Error al crear cita',
+        title: 'Error al procesar la cita',
         text: msg,
+        footer: 'ID Error: ' + (err.response?.status || '500'),
         confirmButtonColor: '#3085d6',
         heightAuto: false
       });
@@ -456,17 +466,20 @@ export default function Citas() {
     }
 
     const payload = {
-      paciente_id: formData.paciente_id,
-      personal_salud_id: formData.personal_salud_id || null,
-      especialidad_id: formData.especialidad_id || null,
+      paciente_id: parseInt(formData.paciente_id),
+      personal_salud_id: formData.personal_salud_id ? parseInt(formData.personal_salud_id) : null,
+      especialidad_id: formData.especialidad_id ? parseInt(formData.especialidad_id) : null,
       fecha: formData.fecha,
       hora: formattedHora || null,
       estado: formData.estado.toLowerCase(),
-      observaciones: formData.observaciones,
-      nro_ticket: ticketValue,
-      total_tickets_dia: totalValue,
-      operador_id: user?.id
+      observaciones: formData.observaciones || "",
+      nro_ticket: parseInt(ticketValue),
+      total_tickets_dia: parseInt(totalValue),
+      operador_id: parseInt(user?.operador_id || user?.id || user?.pk || 0)
     };
+
+    console.log("DEBUG - Payload a enviar:", JSON.stringify(payload, null, 2));
+
     if (selectedCita) {
       mutationUpdate.mutate(payload);
     } else {
@@ -533,11 +546,15 @@ export default function Citas() {
     const medicoNombre = `${cita.personal?.apellidos || cita.personal_salud?.apellidos || 'POR ASIGNAR'}`;
     doc.text(medicoNombre, 5, 100);
 
-    doc.line(5, 105, 75, 105);
+    doc.setFont("helvetica", "bold");
+    doc.text(`ADMISIONISTA:`, 5, 110);
+    doc.setFont("helvetica", "normal");
+    doc.text(`${user?.name || 'Admisión'}`, 5, 115);
+
+    doc.line(5, 120, 75, 120);
     doc.setFontSize(7);
-    doc.text("Por favor estar 15 minutos antes de su cita.", 40, 110, { align: "center" });
-    doc.text(`Emitido: ${fechaActual}`, 40, 115, { align: "center" });
-    doc.text(`Atendido por: ${user?.name || 'Admisión'}`, 40, 120, { align: "center" });
+    doc.text("Por favor estar 15 minutos antes de su cita.", 40, 125, { align: "center" });
+    doc.text(`Emitido: ${fechaActual}`, 40, 130, { align: "center" });
 
     doc.save(`Ticket_Cita_${cita.nro_ticket}.pdf`);
     
@@ -789,7 +806,14 @@ export default function Citas() {
         <Pagination count={totalPages} page={currentPage} onChange={(_, v) => setCurrentPage(v)} color="primary" disabled={isFetching} size="small" />
       </Box>
 
-      <Dialog open={openModal} onClose={handleCloseModal} maxWidth="md" fullWidth>
+      <Dialog 
+        open={openModal} 
+        onClose={handleCloseModal} 
+        maxWidth="md" 
+        fullWidth
+        disableEnforceFocus // Evita conflictos de foco con SweetAlert2
+        disableRestoreFocus // Evita conflictos de foco con SweetAlert2
+      >
         <form onSubmit={handleSubmit} noValidate>
           <DialogTitle sx={{ bgcolor: viewMode ? "info.main" : (selectedCita ? "primary.main" : "success.main"), color: "white", py: 2, display: "flex", alignItems: "center", gap: 1 }}>
             <CalendarIcon />
@@ -805,10 +829,11 @@ export default function Citas() {
                     <Autocomplete
                       sx={{ minWidth: 230 }}
                       options={Array.isArray(pacientesData) ? pacientesData : []}
-                      getOptionLabel={(p) => `${p.nombre} ${p.apellido} — DNI: ${p.dni || p.documento}`}
-                      value={Array.isArray(pacientesData) ? pacientesData.find(p => p.id === formData.paciente_id) || null : null}
+                      getOptionLabel={(p) => `${p.nombre || ''} ${p.apellido || ''} — DNI: ${p.dni || p.DNI || p.documento || ''}`}
+                      value={Array.isArray(pacientesData) ? pacientesData.find(p => String(p.id) === String(formData.paciente_id)) || null : null}
                       disabled={viewMode}
                       onChange={(event, newValue) => {
+                        console.log("Paciente seleccionado:", newValue);
                         setFormData({ ...formData, paciente_id: newValue ? newValue.id : "" });
                       }}
                       renderInput={(params) => (
@@ -816,6 +841,9 @@ export default function Citas() {
                           {...params}
                           label="Buscar Paciente" 
                           placeholder="Escriba nombre o DNI..."
+                          required
+                          error={!formData.paciente_id && !viewMode}
+                          helperText={!formData.paciente_id && !viewMode ? "Debe seleccionar un paciente de la lista" : ""}
                         />
                       )}
                       noOptionsText="No se encontraron pacientes"
@@ -850,10 +878,11 @@ export default function Citas() {
                     <Autocomplete
                       sx={{ minWidth: 230 }}
                       options={Array.isArray(especialidadesData) ? especialidadesData : []}
-                      getOptionLabel={(esp) => `${esp.UPS} — ${esp.especialidad}`}
-                      value={Array.isArray(especialidadesData) ? especialidadesData.find(esp => esp.id === formData.especialidad_id) || null : null}
+                      getOptionLabel={(esp) => `${esp.UPS || ''} — ${esp.especialidad || esp.nombre || ''}`}
+                      value={Array.isArray(especialidadesData) ? especialidadesData.find(esp => String(esp.id) === String(formData.especialidad_id)) || null : null}
                       disabled={viewMode}
                       onChange={(event, newValue) => {
+                        console.log("Especialidad seleccionada:", newValue);
                         setFormData({ 
                           ...formData, 
                           especialidad_id: newValue ? newValue.id : "",
@@ -874,10 +903,11 @@ export default function Citas() {
                     <Autocomplete
                       sx={{ minWidth: 230 }}
                       options={filteredPersonal}
-                      getOptionLabel={(p) => `${p.nombres} ${p.apellidos}${p.especialidad ? ` (${p.especialidad.UPS || p.especialidad.especialidad})` : ""}`}
-                      value={filteredPersonal.find(p => p.id === formData.personal_salud_id) || null}
+                      getOptionLabel={(p) => `${p.nombres || ''} ${p.apellidos || ''}${p.especialidad ? ` (${p.especialidad.UPS || p.especialidad.especialidad || ''})` : ""}`}
+                      value={filteredPersonal.find(p => String(p.id) === String(formData.personal_salud_id)) || null}
                       disabled={viewMode || (!formData.especialidad_id && filteredPersonal.length === 0)}
                       onChange={(event, newValue) => {
+                        console.log("Médico seleccionado:", newValue);
                         setFormData({ ...formData, personal_salud_id: newValue ? newValue.id : "" });
                       }}
                       renderInput={(params) => (

@@ -1,6 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { Typography, Paper, Grid, Box, CircularProgress, Stack, Skeleton, FormControl, InputLabel, Select, MenuItem, List, ListItem, ListItemText, ListItemAvatar, Avatar, Divider } from '@mui/material';
+import { Typography, Paper, Grid, Box, CircularProgress, Stack, Skeleton, FormControl, InputLabel, Select, MenuItem, List, ListItem, ListItemText, ListItemAvatar, Avatar, Divider, Chip, Tooltip, IconButton } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
+import InfoIcon from '@mui/icons-material/Info';
+import WarningIcon from '@mui/icons-material/Warning';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { getPersonalSalud } from '../../services/personalService';
 import { getOperadores } from '../../services/operadoresService';
 import { getPacientes } from '../../services/pacientesService';
@@ -109,6 +112,36 @@ export default function Dashboard() {
       .slice(0, 5); // Tomar solo los 5 más recientes
   }, [patients]);
 
+  const staffAlerts = useMemo(() => {
+    // Umbral mínimo de médicos por especialidad
+    const MIN_STAFF = 2; 
+    
+    // Contamos personal por especialidad
+    const staffCountBySpec = {};
+    staffList.forEach(s => {
+      // Intentar obtener el nombre de la especialidad del objeto personal
+      const specName = s.especialidad?.especialidad || s.especialidad?.nombre || s.especialidad_nombre || 'General';
+      staffCountBySpec[specName] = (staffCountBySpec[specName] || 0) + 1;
+    });
+
+    return specialtiesList.map(spec => {
+      const name = spec.especialidad || spec.nombre || spec.ups;
+      const count = staffCountBySpec[name] || 0;
+      let status = 'success';
+      let message = 'Operativo';
+
+      if (count === 0) {
+        status = 'error';
+        message = 'Crítico: Sin personal';
+      } else if (count < MIN_STAFF) {
+        status = 'warning';
+        message = 'Bajo: Reforzar';
+      }
+
+      return { name, count, status, message };
+    });
+  }, [staffList, specialtiesList]);
+
   const filteredCitas = useMemo(() => {
     if (selectedStaff === 'all') return appointmentsList;
     return appointmentsList.filter(c => {
@@ -212,7 +245,7 @@ export default function Dashboard() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
         <Typography variant="h4" fontWeight={700}>Panel de Control</Typography>
       </Box>
-      
+
       <Box sx={{ mb: 4 }}>
         <Grid container spacing={3}>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -228,6 +261,36 @@ export default function Dashboard() {
             <StatCard title="Citas Hoy" value={getCitasHoyCount()} loading={l4} color="info" icon="📅" />
           </Grid>
         </Grid>
+      </Box>
+
+      {/* Alertas de Stock de Personal */}
+      <Box sx={{ mb: 4 }}>
+        <Paper sx={{ p: 3, borderRadius: 2, bgcolor: 'background.paper', borderLeft: '6px solid', borderLeftColor: 'warning.main', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
+            <WarningIcon color="warning" />
+            <Typography variant="h6" fontWeight={700}>Estado de Disponibilidad de Personal</Typography>
+            <Tooltip title="Muestra las especialidades con poco o sin personal asignado (Mínimo requerido: 2)">
+              <IconButton size="small"><InfoIcon fontSize="small" /></IconButton>
+            </Tooltip>
+          </Box>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
+            {l1 ? (
+              <Skeleton variant="rectangular" width="100%" height={40} sx={{ borderRadius: 1 }} />
+            ) : (
+              staffAlerts.map((alert, index) => (
+                <Tooltip key={index} title={`${alert.count} médicos en esta área`}>
+                  <Chip 
+                    icon={alert.status === 'success' ? <CheckCircleIcon /> : <WarningIcon />}
+                    label={`${alert.name}: ${alert.message}`}
+                    color={alert.status}
+                    variant={alert.status === 'success' ? 'outlined' : 'filled'}
+                    sx={{ fontWeight: 600 }}
+                  />
+                </Tooltip>
+              ))
+            )}
+          </Box>
+        </Paper>
       </Box>
 
       <Box sx={{ mb: 4 }}>

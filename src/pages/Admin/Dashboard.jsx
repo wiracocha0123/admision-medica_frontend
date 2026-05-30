@@ -4,8 +4,11 @@ import { useQuery } from '@tanstack/react-query';
 import { getPersonalSalud } from '../../services/personalService';
 import { getOperadores } from '../../services/operadoresService';
 import { getPacientes } from '../../services/pacientesService';
+import { getEspecialidades } from '../../services/especialidadesService';
 import { getCitas } from '../../services/citasService';
-import { XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend } from 'recharts';
+
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
 
 function StatCard({ title, value, loading, color = 'primary', icon = '👥' }) {
   return (
@@ -52,7 +55,21 @@ export default function Dashboard() {
   const { data: staffData, isLoading: l1 } = useQuery({ queryKey: ['stat-staff'], queryFn: () => getPersonalSalud(1), retry: 1 });
   const { data: operators, isLoading: l2 } = useQuery({ queryKey: ['stat-ops'], queryFn: () => getOperadores(1), retry: 1 });
   const { data: patients, isLoading: l3 } = useQuery({ queryKey: ['stat-patients'], queryFn: () => getPacientes(1), retry: 1 });
-  const { data: allAppointments, isLoading: l4 } = useQuery({ queryKey: ['stat-citas-all'], queryFn: () => getCitas(1), retry: 1 });
+  const { data: allAppointments, isLoading: l4 } = useQuery({ 
+    queryKey: ['stat-citas-all'], 
+    queryFn: async () => {
+      const resp = await getCitas(1);
+      // Si el backend pagina y devuelve una lista en .data o .data.data
+      return resp?.data?.data || resp?.data || resp || [];
+    }, 
+    retry: 1 
+  });
+  const { data: specialtiesData } = useQuery({ queryKey: ['stat-specialties'], queryFn: () => getEspecialidades(1), retry: 1 });
+
+  const specialtiesList = useMemo(() => {
+    const data = specialtiesData?.data?.data || specialtiesData?.data || specialtiesData || [];
+    return Array.isArray(data) ? data : [];
+  }, [specialtiesData]);
 
   const staffList = useMemo(() => {
     const data = staffData?.data?.data || staffData?.data || staffData || [];
@@ -60,8 +77,8 @@ export default function Dashboard() {
   }, [staffData]);
 
   const appointmentsList = useMemo(() => {
-    const rawData = allAppointments?.data?.data || allAppointments?.data || allAppointments || [];
-    return Array.isArray(rawData) ? rawData : (Array.isArray(rawData.data) ? rawData.data : []);
+    // Ya lo normalizamos en la queryFn, pero por seguridad:
+    return Array.isArray(allAppointments) ? allAppointments : [];
   }, [allAppointments]);
 
   const filteredCitas = useMemo(() => {
@@ -95,6 +112,31 @@ export default function Dashboard() {
         };
       });
   }, [filteredCitas]);
+
+  const pieData = useMemo(() => {
+    const counts = {};
+    filteredCitas.forEach(c => {
+      // Intentar obtener el ID de la especialidad de múltiples campos comunes
+      const specId = c.especialidad_id || c.especialidad?.id || c.id_especialidad || c.especialidad_atencion_id;
+      if (!specId) return;
+      counts[specId] = (counts[specId] || 0) + 1;
+    });
+
+    const data = Object.keys(counts).map(id => {
+      const specialty = specialtiesList.find(s => String(s.id) === String(id));
+      const name = specialty 
+        ? (specialty.especialidad || specialty.nombre || specialty.ups || specialty.descripcion || `ID: ${id}`)
+        : `ID: ${id}`;
+        
+      return {
+        name: name,
+        value: counts[id]
+      };
+    });
+
+    // Ordenar de mayor a menor para una mejor visualización
+    return data.sort((a, b) => b.value - a.value);
+  }, [filteredCitas, specialtiesList]);
 
   const getCount = (res) => {
     const val = res?.data || res;
@@ -136,79 +178,168 @@ export default function Dashboard() {
       </Box>
 
       <Box sx={{ mb: 4 }}>
-        <Paper sx={{ p: 4, borderRadius: 3, boxShadow: '0 10px 30px rgba(0,0,0,0.05)', minHeight: 450 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3 }}>
-            <Box>
-              <Typography variant="h6" fontWeight={700}>
-                Volumen de Citas por Fecha
-              </Typography>
-              {chartData.length > 0 && (
-                <Typography variant="caption" color="text.secondary">
-                  Datos actualizados en tiempo real
-                </Typography>
-              )}
-            </Box>
+        <Grid container spacing={3}>
+          {/* Gráfico de Barras - Volumen de Citas */}
+          <Grid size={12}>
+            <Paper sx={{ p: 4, borderRadius: 3, boxShadow: '0 10px 30px rgba(0,0,0,0.05)', minHeight: 450 }}>
+              <Box sx={{ 
+                display: 'flex', 
+                flexDirection: { xs: 'column', sm: 'row' }, 
+                justifyContent: 'space-between', 
+                alignItems: { xs: 'stretch', sm: 'flex-start' }, 
+                mb: 3,
+                gap: 2
+              }}>
+                <Box>
+                  <Typography variant="h6" fontWeight={700}>
+                    Volumen de Citas por Fecha
+                  </Typography>
+                  {chartData.length > 0 && (
+                    <Typography variant="caption" color="text.secondary">
+                      Datos actualizados en tiempo real
+                    </Typography>
+                  )}
+                </Box>
 
-            <FormControl sx={{ minWidth: 240 }} size="small">
-              <InputLabel>Filtrar por Médico</InputLabel>
-              <Select
-                value={selectedStaff}
-                label="Filtrar por Médico"
-                onChange={(e) => setSelectedStaff(e.target.value)}
-                sx={{ borderRadius: 2, bgcolor: 'background.paper' }}
-              >
-                <MenuItem value="all">Todos los Médicos</MenuItem>
-                {staffList.map((p) => (
-                  <MenuItem key={p.id} value={p.id}>{p.nombres} {p.apellidos}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Box>
-          
-          <Box sx={{ width: '100%', height: 400, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            {l4 ? (
-              <Skeleton variant="rectangular" width="100%" height={400} sx={{ borderRadius: 2 }} />
-            ) : chartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart 
-                  data={chartData} 
-                  margin={{ top: 20, right: 30, left: 10, bottom: 20 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eee" />
-                  <XAxis 
-                    dataKey="displayDate" 
-                    fontSize={12}
-                    tick={{ fill: '#666' }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis 
-                    fontSize={12}
-                    tick={{ fill: '#666' }}
-                    axisLine={false}
-                    tickLine={false}
-                    allowDecimals={false}
-                  />
-                  <ChartTooltip 
-                    cursor={{ fill: 'rgba(0,0,0,0.05)' }}
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                  />
-                  <Bar 
-                    dataKey="cantidad" 
-                    fill="#3f51b5"
-                    radius={[4, 4, 0, 0]}
-                    barSize={45}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 2 }}>
-                <Typography variant="h2" sx={{ opacity: 0.2 }}>📊</Typography>
-                <Typography color="text.secondary" variant="h6">Sin datos para graficar</Typography>
+                <FormControl sx={{ minWidth: { xs: '100%', sm: 240 } }} size="small">
+                  <InputLabel>Filtrar por Médico</InputLabel>
+                  <Select
+                    value={selectedStaff}
+                    label="Filtrar por Médico"
+                    onChange={(e) => setSelectedStaff(e.target.value)}
+                    sx={{ borderRadius: 2, bgcolor: 'background.paper' }}
+                  >
+                    <MenuItem value="all">Todos los Médicos</MenuItem>
+                    {staffList.map((p) => (
+                      <MenuItem key={p.id} value={p.id}>{p.nombres} {p.apellidos}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
               </Box>
-            )}
-          </Box>
-        </Paper>
+              
+              <Box sx={{ width: '100%', height: 400, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                {l4 ? (
+                  <Skeleton variant="rectangular" width="100%" height={400} sx={{ borderRadius: 2 }} />
+                ) : chartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart 
+                      data={chartData} 
+                      margin={{ top: 20, right: 30, left: 10, bottom: 20 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eee" />
+                      <XAxis 
+                        dataKey="displayDate" 
+                        fontSize={12}
+                        tick={{ fill: '#666' }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <YAxis 
+                        fontSize={12}
+                        tick={{ fill: '#666' }}
+                        axisLine={false}
+                        tickLine={false}
+                        allowDecimals={false}
+                      />
+                      <ChartTooltip 
+                        cursor={{ fill: 'rgba(0,0,0,0.05)' }}
+                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                      />
+                      <Bar 
+                        dataKey="cantidad" 
+                        fill="#3f51b5"
+                        radius={[4, 4, 0, 0]}
+                        barSize={45}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 2 }}>
+                    <Typography variant="h2" sx={{ opacity: 0.2 }}>📊</Typography>
+                    <Typography color="text.secondary" variant="h6">Sin datos para graficar</Typography>
+                  </Box>
+                )}
+              </Box>
+            </Paper>
+          </Grid>
+
+          {/* Gráfico Circular - Especialidades */}
+          <Grid size={12}>
+            <Paper sx={{ p: 4, borderRadius: 3, boxShadow: '0 10px 30px rgba(0,0,0,0.05)', minHeight: 450 }}>
+              <Typography variant="h6" fontWeight={700} gutterBottom>
+                Demanda por Especialidad
+              </Typography>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+                Distribución de citas según especialidad médica
+              </Typography>
+              
+              <Box sx={{ width: '100%', height: { xs: 'auto', sm: 350 }, display: 'flex', flexDirection: { xs: 'column', sm: 'row' } }}>
+                {pieData.length > 0 ? (
+                  <>
+                    <Box sx={{ width: { xs: '100%', sm: '50%' }, height: { xs: 250, sm: '100%' } }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={pieData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={60}
+                            outerRadius={80}
+                            paddingAngle={5}
+                            dataKey="value"
+                          >
+                            {pieData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <ChartTooltip />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </Box>
+                    <Box sx={{ 
+                      width: { xs: '100%', sm: '50%' }, 
+                      height: '100%', 
+                      display: 'flex', 
+                      flexDirection: 'column', 
+                      justifyContent: 'center',
+                      pl: { xs: 0, sm: 2 },
+                      mt: { xs: 2, sm: 0 },
+                      overflowY: 'auto',
+                      maxHeight: { xs: 200, sm: '100%' }
+                    }}>
+                      <Stack spacing={1}>
+                        {pieData.map((entry, index) => (
+                          <Box key={`legend-${index}`} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Box sx={{ 
+                              width: 12, 
+                              height: 12, 
+                              borderRadius: '50%', 
+                              bgcolor: COLORS[index % COLORS.length],
+                              flexShrink: 0 
+                            }} />
+                            <Typography variant="caption" sx={{ 
+                              fontWeight: 500,
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis' 
+                            }}>
+                              {entry.name}: <strong>{entry.value}</strong>
+                            </Typography>
+                          </Box>
+                        ))}
+                      </Stack>
+                    </Box>
+                  </>
+                ) : (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 2 }}>
+                    <Typography variant="h2" sx={{ opacity: 0.2 }}>🍰</Typography>
+                    <Typography color="text.secondary" variant="h6">Sin datos</Typography>
+                  </Box>
+                )}
+              </Box>
+            </Paper>
+          </Grid>
+        </Grid>
       </Box>
 
       <Paper sx={{ mt: 4, p: 3, borderRadius: 2 }}>

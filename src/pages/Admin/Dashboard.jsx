@@ -315,6 +315,14 @@ export default function Dashboard() {
           </Grid>
         </Grid>
       </Box>
+      <Paper sx={{ mb: 4, p: 3, borderRadius: 2 }}>
+        <Typography variant="h6" gutterBottom>Resumen de Gestión</Typography>
+        <Typography variant="body2" color="text.secondary">
+          {selectedStaff === 'all' 
+            ? "Visualizando estadísticas globales de todos los especialistas." 
+            : `Visualizando historial de citas del médico seleccionado.`}
+        </Typography>
+      </Paper>
 
       {/* Alertas de Stock de Personal */}
       <Box sx={{ mb: 4 }}>
@@ -364,7 +372,7 @@ export default function Dashboard() {
                 onChange={(newValue) => setFilterDate(newValue)}
                 minDate={startOfMonth(new Date())}
                 maxDate={endOfMonth(new Date())}
-                renderInput={(params) => <TextField {...params} size="small" sx={{ minWidth: 200 }} />}
+                slotProps={{ textField: { size: 'small', sx: { minWidth: 200 } } }}
               />
             </LocalizationProvider>
           </Box>
@@ -731,14 +739,7 @@ export default function Dashboard() {
         </Grid>
       </Box>
 
-      <Paper sx={{ mt: 4, p: 3, borderRadius: 2 }}>
-        <Typography variant="h6" gutterBottom>Resumen de Gestión</Typography>
-        <Typography variant="body2" color="text.secondary">
-          {selectedStaff === 'all' 
-            ? "Visualizando estadísticas globales de todos los especialistas." 
-            : `Visualizando historial de citas del médico seleccionado.`}
-        </Typography>
-      </Paper>
+      
     </Box>
   );
 }

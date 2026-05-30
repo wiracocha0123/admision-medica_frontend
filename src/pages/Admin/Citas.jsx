@@ -1,4 +1,4 @@
-﻿import React, { useState, useContext, useEffect } from "react";
+﻿import React, { useState, useContext, useEffect, useMemo } from "react";
 import { 
   Paper, Typography, Table, TableBody, TableCell, TableHead, TableRow, Button, Box, 
   CircularProgress, Alert, TableContainer, Skeleton, Chip, Pagination, Stack, Avatar, 
@@ -144,6 +144,15 @@ export default function Citas() {
     }),
     enabled: !!user && openModal,
   });
+
+  const filteredPersonal = useMemo(() => {
+    const list = Array.isArray(personalData) ? personalData : [];
+    if (!formData.especialidad_id) return list;
+    return list.filter(p => 
+      String(p.especialidad_id) === String(formData.especialidad_id) || 
+      (p.especialidad && String(p.especialidad.id) === String(formData.especialidad_id))
+    );
+  }, [personalData, formData.especialidad_id]);
 
   const mutationCreate = useMutation({
     mutationFn: createCita,
@@ -460,7 +469,7 @@ export default function Citas() {
 
       <Paper variant="outlined" sx={{ p: 2, mb: 3, bgcolor: "#fcfcfc" }}>
         <Grid container spacing={2} sx={{ alignItems: "center" }}>
-          <Grid item xs={12} md={3}>
+          <Grid size={{ xs: 12, md: 3 }}>
             <TextField
               fullWidth
               size="small"
@@ -474,7 +483,7 @@ export default function Citas() {
               }}
             />
           </Grid>
-          <Grid item xs={12} sm={6} md={2}>
+          <Grid size={{ xs: 12, sm: 6, md: 2 }}>
             <TextField
               select
               fullWidth
@@ -489,7 +498,7 @@ export default function Citas() {
               <MenuItem value="cancelada">Cancelada</MenuItem>
             </TextField>
           </Grid>
-          <Grid item xs={12} sm={6} md={3}>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <TextField
               fullWidth
               size="small"
@@ -500,7 +509,7 @@ export default function Citas() {
               slotProps={{ inputLabel: { shrink: true } }}
             />
           </Grid>
-          <Grid item xs={12} sm={6} md={3}>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <TextField
               select
               fullWidth
@@ -517,7 +526,7 @@ export default function Citas() {
               ))}
             </TextField>
           </Grid>
-          <Grid item xs={12} md={1}>
+          <Grid size={{ xs: 12, md: 1 }}>
             <Button 
               fullWidth 
               variant="text" 
@@ -635,7 +644,7 @@ export default function Citas() {
               <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
                 <Typography variant="subtitle2" color="primary" sx={{ fontWeight: "bold", mb: 3, borderBottom: "2px solid #primary.main", pb: 1, textTransform: "uppercase", letterSpacing: 1 }}>DATOS DEL PACIENTE Y REGISTRO</Typography>
                 <Grid container spacing={3}>
-                  <Grid item xs={12}>
+                  <Grid size={12}>
                     <Autocomplete
                       sx={{ minWidth: 230 }}
                       options={Array.isArray(pacientesData) ? pacientesData : []}
@@ -647,7 +656,7 @@ export default function Citas() {
                       }}
                       renderInput={(params) => (
                         <TextField 
-                          {...params} 
+                          {...params}
                           label="Buscar Paciente" 
                           placeholder="Escriba nombre o DNI..."
                         />
@@ -655,7 +664,7 @@ export default function Citas() {
                       noOptionsText="No se encontraron pacientes"
                     />
                   </Grid>
-                  <Grid item xs={12} sm={6}>
+                  <Grid size={{ xs: 12, sm: 6 }}>
                     <TextField 
                       fullWidth 
                       label="Operador del Sistema" 
@@ -664,7 +673,7 @@ export default function Citas() {
                       slotProps={{ input: { readOnly: true, sx: { bgcolor: "#f5f5f5" } } }} 
                     />
                   </Grid>
-                  <Grid item xs={12} sm={6}>
+                  <Grid size={{ xs: 12, sm: 6 }}>
                     <TextField 
                       fullWidth
                       label="N° Ticket Asignado"
@@ -680,26 +689,7 @@ export default function Citas() {
               <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
                 <Typography variant="subtitle2" color="primary" sx={{ fontWeight: "bold", mb: 3, borderBottom: "2px solid #primary.main", pb: 1, textTransform: "uppercase", letterSpacing: 1 }}>ASIGNACIÓN MÉDICA</Typography>
                 <Grid container spacing={3}>
-                  <Grid item xs={12}>
-                    <Autocomplete
-                      sx={{ minWidth: 230 }}
-                      options={Array.isArray(personalData) ? personalData : []}
-                      getOptionLabel={(p) => `${p.nombres} ${p.apellidos}`}
-                      value={Array.isArray(personalData) ? personalData.find(p => p.id === formData.personal_salud_id) || null : null}
-                      disabled={viewMode}
-                      onChange={(event, newValue) => {
-                        setFormData({ ...formData, personal_salud_id: newValue ? newValue.id : "" });
-                      }}
-                      renderInput={(params) => (
-                        <TextField 
-                          {...params} 
-                          label="Buscar Médico Tratante" 
-                        />
-                      )}
-                      noOptionsText="No se encontró personal de salud"
-                    />
-                  </Grid>
-                  <Grid item xs={12}>
+                  <Grid size={12}>
                     <Autocomplete
                       sx={{ minWidth: 230 }}
                       options={Array.isArray(especialidadesData) ? especialidadesData : []}
@@ -707,15 +697,41 @@ export default function Citas() {
                       value={Array.isArray(especialidadesData) ? especialidadesData.find(esp => esp.id === formData.especialidad_id) || null : null}
                       disabled={viewMode}
                       onChange={(event, newValue) => {
-                        setFormData({ ...formData, especialidad_id: newValue ? newValue.id : "" });
+                        setFormData({ 
+                          ...formData, 
+                          especialidad_id: newValue ? newValue.id : "",
+                          personal_salud_id: "" // Limpiar médico al cambiar especialidad
+                        });
                       }}
                       renderInput={(params) => (
                         <TextField 
                           {...params} 
-                          label="Buscar Especialidad" 
+                          label="1. Seleccionar Especialidad (UPS)" 
+                          placeholder="Filtra por especialidad primero..."
                         />
                       )}
                       noOptionsText="No se encontraron especialidades"
+                    />
+                  </Grid>
+                  <Grid size={12}>
+                    <Autocomplete
+                      sx={{ minWidth: 230 }}
+                      options={filteredPersonal}
+                      getOptionLabel={(p) => `${p.nombres} ${p.apellidos}${p.especialidad ? ` (${p.especialidad.UPS || p.especialidad.especialidad})` : ""}`}
+                      value={filteredPersonal.find(p => p.id === formData.personal_salud_id) || null}
+                      disabled={viewMode || (!formData.especialidad_id && filteredPersonal.length === 0)}
+                      onChange={(event, newValue) => {
+                        setFormData({ ...formData, personal_salud_id: newValue ? newValue.id : "" });
+                      }}
+                      renderInput={(params) => (
+                        <TextField 
+                          {...params} 
+                          label="2. Buscar Médico Tratante" 
+                          placeholder={formData.especialidad_id ? "Seleccione especialista..." : "Seleccione especialidad primero"}
+                          helperText={!formData.especialidad_id ? "Seleccione una especialidad para ver los médicos disponibles" : ""}
+                        />
+                      )}
+                      noOptionsText={formData.especialidad_id ? "No hay médicos en esta especialidad" : "Seleccione una especialidad"}
                     />
                   </Grid>
                 </Grid>
@@ -724,7 +740,7 @@ export default function Citas() {
               <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
                 <Typography variant="subtitle2" color="primary" sx={{ fontWeight: "bold", mb: 3, borderBottom: "2px solid #primary.main", pb: 1, textTransform: "uppercase", letterSpacing: 1 }}>PROGRAMACIÓN DE CITA</Typography>
                 <Grid container spacing={3}>
-                  <Grid item xs={12}>
+                  <Grid size={12}>
                     <TextField 
                       fullWidth 
                       label="Fecha de la Cita" 
@@ -735,7 +751,7 @@ export default function Citas() {
                       onChange={(e) => setFormData({ ...formData, fecha: e.target.value })} 
                     />
                   </Grid>
-                  <Grid item xs={12}>
+                  <Grid size={12}>
                     <TextField 
                       fullWidth 
                       label="Hora de Atención" 
@@ -746,7 +762,7 @@ export default function Citas() {
                       onChange={(e) => setFormData({ ...formData, hora: e.target.value })} 
                     />
                   </Grid>
-                  <Grid item xs={12}>
+                  <Grid size={12}>
                     <FormControl fullWidth>
                       <InputLabel>Estado de la Cita</InputLabel>
                       <Select 

@@ -1,9 +1,23 @@
 import React, { useState, useMemo } from 'react';
-import { Typography, Paper, Grid, Box, CircularProgress, Stack, Skeleton, FormControl, InputLabel, Select, MenuItem, List, ListItem, ListItemText, ListItemAvatar, Avatar, Divider, Chip, Tooltip, IconButton } from '@mui/material';
+import { 
+  Typography, Paper, Grid, Box, CircularProgress, Stack, Skeleton, 
+  FormControl, InputLabel, Select, MenuItem, List, ListItem, ListItemText, 
+  ListItemAvatar, Avatar, Divider, Chip, Tooltip, IconButton, TextField,
+  Table, TableBody, TableCell, TableHead, TableRow, TableContainer
+} from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import InfoIcon from '@mui/icons-material/Info';
 import WarningIcon from '@mui/icons-material/Warning';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import PersonIcon from '@mui/icons-material/Person';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import SearchIcon from '@mui/icons-material/Search';
+import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { es } from 'date-fns/locale/es';
+import { format, isSameDay, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { getPersonalSalud } from '../../services/personalService';
 import { getOperadores } from '../../services/operadoresService';
 import { getPacientes } from '../../services/pacientesService';
@@ -54,6 +68,7 @@ function StatCard({ title, value, loading, color = 'primary', icon = '👥' }) {
 
 export default function Dashboard() {
   const [selectedStaff, setSelectedStaff] = useState('all');
+  const [filterDate, setFilterDate] = useState(new Date());
   
   const { data: staffData, isLoading: l1 } = useQuery({ 
     queryKey: ['stat-staff'], 
@@ -141,6 +156,44 @@ export default function Dashboard() {
       return { name, count, status, message };
     });
   }, [staffList, specialtiesList]);
+
+  const workingStaffToday = useMemo(() => {
+    if (!staffList.length) return [];
+    
+    // Nombres de los días en español para el mapeo del horario
+    const daysMap = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+    const selectedDayName = daysMap[filterDate.getDay()];
+    
+    return staffList.filter(s => {
+      // Intentar obtener el horario (puede ser objeto o string JSON)
+      let schedule = s.horario_semanal;
+      if (typeof schedule === 'string') {
+        try { schedule = JSON.parse(schedule); } catch (e) { schedule = null; }
+      }
+      if (Array.isArray(schedule) && schedule.length > 0) schedule = schedule[0];
+
+      // Verificar si tiene turno para el día seleccionado
+      return schedule && schedule[selectedDayName] && Object.keys(schedule[selectedDayName]).length > 0;
+    }).map(s => {
+      // Extraer los turnos del día para mostrar
+      let schedule = s.horario_semanal;
+      if (typeof schedule === 'string') try { schedule = JSON.parse(schedule); } catch (e) {}
+      if (Array.isArray(schedule) && schedule.length > 0) schedule = schedule[0];
+      
+      const dayData = schedule[selectedDayName] || {};
+      
+      // Convertir turnos a un string amigable para la tabla
+      // Estructura esperada: {"Manana": "08:00-12:00", "Tarde": "14:00-18:00"}
+      const turnosStr = Object.entries(dayData)
+        .map(([turno, horas]) => `${turno}: ${horas}`)
+        .join(' | ');
+
+      return {
+        ...s,
+        turnosDisplay: turnosStr || 'Sin turnos definidos'
+      };
+    });
+  }, [staffList, filterDate]);
 
   const filteredCitas = useMemo(() => {
     if (selectedStaff === 'all') return appointmentsList;
@@ -290,6 +343,105 @@ export default function Dashboard() {
               ))
             )}
           </Box>
+        </Paper>
+      </Box>
+
+      {/* NUEVA SECCIÓN: Personal Laborando Hoy / Turnos */}
+      <Box sx={{ mb: 4 }}>
+        <Paper sx={{ p: 4, borderRadius: 3, boxShadow: '0 10px 30px rgba(0,0,0,0.05)' }}>
+          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, justifyContent: 'space-between', alignItems: { xs: 'stretch', sm: 'center' }, mb: 3, gap: 2 }}>
+            <Box>
+              <Typography variant="h6" fontWeight={700}>Personal en Turno</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Visualizando especialistas laborando el día seleccionado
+              </Typography>
+            </Box>
+            
+            <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={es}>
+              <DatePicker
+                label="Seleccionar Fecha"
+                value={filterDate}
+                onChange={(newValue) => setFilterDate(newValue)}
+                minDate={startOfMonth(new Date())}
+                maxDate={endOfMonth(new Date())}
+                renderInput={(params) => <TextField {...params} size="small" sx={{ minWidth: 200 }} />}
+              />
+            </LocalizationProvider>
+          </Box>
+
+          <TableContainer sx={{ maxHeight: 400 }}>
+            <Table stickyHeader size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 700, bgcolor: 'background.default' }}>Especialista</TableCell>
+                  <TableCell sx={{ fontWeight: 700, bgcolor: 'background.default' }}>Especialidad</TableCell>
+                  <TableCell sx={{ fontWeight: 700, bgcolor: 'background.default' }}>Horarios / Turnos</TableCell>
+                  <TableCell sx={{ fontWeight: 700, bgcolor: 'background.default' }} align="center">Estado</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {l1 ? (
+                  Array.from({ length: 3 }).map((_, i) => (
+                    <TableRow key={i}>
+                      <TableCell><Skeleton variant="text" /></TableCell>
+                      <TableCell><Skeleton variant="text" /></TableCell>
+                      <TableCell><Skeleton variant="text" /></TableCell>
+                      <TableCell><Skeleton variant="text" /></TableCell>
+                    </TableRow>
+                  ))
+                ) : workingStaffToday.length > 0 ? (
+                  workingStaffToday.map((staff) => (
+                    <TableRow key={staff.id} hover>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                          <Avatar sx={{ width: 32, height: 32, fontSize: '0.8rem', bgcolor: 'primary.main' }}>
+                            {(staff.nombres || 'P')[0]}
+                          </Avatar>
+                          <Typography variant="body2" fontWeight={500}>
+                            {staff.nombres || ''} {staff.apellidos || ''}
+                          </Typography>
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        <Chip 
+                          label={
+                            staff.especialidad?.especialidad || 
+                            staff.especialidad?.nombre || 
+                            staff.especialidad_nombre || 
+                            'General'
+                          } 
+                          size="small" 
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <AccessTimeIcon sx={{ fontSize: 14 }} />
+                          {staff.turnosDisplay}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="center">
+                        <Chip 
+                          label="En Turno" 
+                          color="success" 
+                          size="small" 
+                          sx={{ height: 20, fontSize: '0.65rem', fontWeight: 700 }} 
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={4} align="center" sx={{ py: 4 }}>
+                      <Typography variant="body2" color="text.secondary">
+                        No hay personal programado para esta fecha.
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
         </Paper>
       </Box>
 

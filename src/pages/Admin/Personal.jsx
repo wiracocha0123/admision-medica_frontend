@@ -17,6 +17,7 @@ import { getEspecialidades } from '../../services/especialidadesService';
 import { AuthContext } from '../../contexts/AuthContext';
 import HorarioSemanalDisplay from '../../components/HorarioSemanalDisplay';
 import HorarioSemanalPicker from '../../components/HorarioSemanalPicker';
+import Swal from 'sweetalert2';
 
 export default function Personal() {
   const { user } = useContext(AuthContext);
@@ -30,15 +31,9 @@ export default function Personal() {
   // Estados para modales
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState(null);
 
   // Estados para Edición/Creación
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  
-  // Estado para modal de error/validación
-  const [errorModalOpen, setErrorModalOpen] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
 
   const [formData, setFormData] = useState({
     nombres: '',
@@ -73,13 +68,24 @@ export default function Personal() {
     mutationFn: (id) => deletePersonalSalud(id),
     onSuccess: () => {
       queryClient.invalidateQueries(['personal']);
-      setDeleteConfirmOpen(false);
-      setItemToDelete(null);
+      Swal.fire({
+        icon: 'success',
+        title: '¡Eliminado!',
+        text: 'El personal ha sido eliminado correctamente.',
+        timer: 1500,
+        showConfirmButton: false,
+        heightAuto: false
+      });
     },
     onError: (err) => {
       let msg = err.response?.data?.message || err.message;
-      setErrorMessage('Error al eliminar: ' + msg);
-      setErrorModalOpen(true);
+      Swal.fire({
+        icon: 'error',
+        title: 'Error al eliminar',
+        text: msg,
+        confirmButtonColor: '#3085d6',
+        heightAuto: false
+      });
     }
   });
 
@@ -90,22 +96,35 @@ export default function Personal() {
       }
       return createPersonalSalud(payload);
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries(['personal']);
       setEditDialogOpen(false);
+      
+      Swal.fire({
+        icon: 'success',
+        title: variables.id ? '¡Actualizado!' : '¡Registrado!',
+        text: `Personal ${variables.id ? 'actualizado' : 'registrado'} correctamente.`,
+        timer: 2000,
+        showConfirmButton: false,
+        heightAuto: false
+      });
     },
     onError: (err) => {
       let msg = err.response?.data?.message || err.message;
       
-      // Traducir mensajes comunes de error del servidor
       if (msg.includes('dni has already been taken')) {
         msg = 'Ya existe personal registrado con este DNI.';
       } else if (msg.includes('email has already been taken')) {
         msg = 'Este correo electrónico ya está en uso.';
       }
 
-      setErrorMessage(msg);
-      setErrorModalOpen(true);
+      Swal.fire({
+        icon: 'error',
+        title: 'Error al guardar',
+        text: msg,
+        confirmButtonColor: '#3085d6',
+        heightAuto: false
+      });
     }
   });
 
@@ -159,20 +178,35 @@ export default function Personal() {
 
     // Validaciones manuales
     if (!formData.nombres.trim() || !formData.apellidos.trim()) {
-      setErrorMessage('Los nombres y apellidos son obligatorios.');
-      setErrorModalOpen(true);
+      Swal.fire({
+        icon: 'warning',
+        title: 'Campos requeridos',
+        text: 'Los nombres y apellidos son obligatorios.',
+        confirmButtonColor: '#3085d6',
+        heightAuto: false
+      });
       return;
     }
 
-    if (!formData.dni || formData.dni.length !== 8) {
-      setErrorMessage('El DNI debe tener exactamente 8 dígitos.');
-      setErrorModalOpen(true);
+    if (!formData.dni || String(formData.dni).length !== 8) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'DNI inválido',
+        text: 'El DNI debe tener exactamente 8 dígitos.',
+        confirmButtonColor: '#3085d6',
+        heightAuto: false
+      });
       return;
     }
 
     if (!formData.especialidad_id) {
-      setErrorMessage('Debe seleccionar una especialidad (UPS).');
-      setErrorModalOpen(true);
+      Swal.fire({
+        icon: 'warning',
+        title: 'Campo requerido',
+        text: 'Debe seleccionar una especialidad (UPS).',
+        confirmButtonColor: '#3085d6',
+        heightAuto: false
+      });
       return;
     }
     
@@ -192,14 +226,21 @@ export default function Personal() {
   };
 
   const handleOpenDeleteConfirm = (id) => {
-    setItemToDelete(id);
-    setDeleteConfirmOpen(true);
-  };
-
-  const confirmDelete = () => {
-    if (itemToDelete) {
-      deleteMutation.mutate(itemToDelete);
-    }
+    Swal.fire({
+      title: '¿Estás seguro?',
+      text: "Esta acción eliminará al profesional y sus horarios asociados.",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'Sí, eliminar',
+      cancelButtonText: 'Cancelar',
+      heightAuto: false
+    }).then((result) => {
+      if (result.isConfirmed) {
+        deleteMutation.mutate(id);
+      }
+    });
   };
 
   const paginationData = data?.data || data || {};
@@ -422,22 +463,6 @@ export default function Personal() {
         </DialogActions>
       </Dialog>
 
-      {/* Modal Confirmar Eliminación */}
-      <Dialog open={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)}>
-        <DialogTitle>Confirmar Eliminación</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            ¿Estás seguro de que deseas eliminar permanentemente a este personal de salud? Esta acción no se puede deshacer.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteConfirmOpen(false)} color="inherit">Cancelar</Button>
-          <Button onClick={confirmDelete} color="error" variant="contained" autoFocus disabled={deleteMutation.isLoading}>
-            {deleteMutation.isLoading ? 'Eliminando...' : 'Eliminar'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
       {/* Modal Crear/Editar Personal */}
       <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ bgcolor: formData.id ? 'primary.main' : 'success.main', color: 'white', mb: 2 }}>
@@ -512,31 +537,6 @@ export default function Personal() {
             </Button>
           </DialogActions>
         </form>
-      </Dialog>
-
-      {/* Modal de Alerta/Error Estilo Pacientes */}
-      <Dialog 
-        open={errorModalOpen} 
-        onClose={() => setErrorModalOpen(false)}
-      >
-        <DialogTitle sx={{ bgcolor: 'error.main', color: 'white', fontWeight: 'bold' }}>
-          Información Requerida
-        </DialogTitle>
-        <DialogContent sx={{ mt: 2 }}>
-          <DialogContentText>
-            {errorMessage}
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
-          <Button 
-            onClick={() => setErrorModalOpen(false)} 
-            variant="contained" 
-            color="error"
-            fullWidth
-          >
-            Entendido
-          </Button>
-        </DialogActions>
       </Dialog>
     </Paper>
   );

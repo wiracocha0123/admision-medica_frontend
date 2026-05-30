@@ -17,6 +17,7 @@ import { getPacientes } from "../../services/pacientesService";
 import { getPersonalSalud } from "../../services/personalService";
 import { getEspecialidades } from "../../services/especialidadesService";
 import { AuthContext } from "../../contexts/AuthContext";
+import Swal from "sweetalert2";
 
 export default function Citas() {
   const { user } = useContext(AuthContext);
@@ -26,14 +27,6 @@ export default function Citas() {
   const [openModal, setOpenModal] = useState(false);
   const [viewMode, setViewMode] = useState(false); 
   const [selectedCita, setSelectedCita] = useState(null);
-
-  // Estado para confirmación de eliminación
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [citaToDelete, setCitaToDelete] = useState(null);
-
-  // Estados para modal de error/validación
-  const [errorModalOpen, setErrorModalOpen] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
 
   // Estados para búsqueda y filtros
   const [searchTerm, setSearchTerm] = useState("");
@@ -162,6 +155,17 @@ export default function Citas() {
       queryClient.invalidateQueries({ queryKey: ["tickets-dia"] });
       queryClient.invalidateQueries({ queryKey: ["check-citas-hoy"] }); // Re-identificamos que hoy ya tiene actividad
       handleCloseModal();
+
+      setTimeout(() => {
+        Swal.fire({
+          icon: 'success',
+          title: '¡Cita Creada!',
+          text: 'La cita se ha registrado correctamente en el sistema.',
+          timer: 2000,
+          showConfirmButton: false,
+          heightAuto: false
+        });
+      }, 100);
     },
     onError: (err) => {
       let msg = err.response?.data?.message || err.message;
@@ -170,8 +174,14 @@ export default function Citas() {
       } else if (msg.includes('paciente_id')) {
         msg = 'Debe seleccionar un paciente válido.';
       }
-      setErrorMessage(msg);
-      setErrorModalOpen(true);
+      
+      Swal.fire({
+        icon: 'error',
+        title: 'Error al crear cita',
+        text: msg,
+        confirmButtonColor: '#3085d6',
+        heightAuto: false
+      });
     }
   });
 
@@ -181,14 +191,31 @@ export default function Citas() {
       queryClient.invalidateQueries({ queryKey: ["citas"] });
       queryClient.invalidateQueries({ queryKey: ["tickets-dia"] });
       handleCloseModal();
+
+      setTimeout(() => {
+        Swal.fire({
+          icon: 'success',
+          title: '¡Cita Actualizada!',
+          text: 'Los cambios se han guardado correctamente.',
+          timer: 2000,
+          showConfirmButton: false,
+          heightAuto: false
+        });
+      }, 100);
     },
     onError: (err) => {
       let msg = err.response?.data?.message || err.message;
       if (msg.includes('already been taken')) {
         msg = 'Este número de ticket ya está ocupado para esta fecha.';
       }
-      setErrorMessage(msg);
-      setErrorModalOpen(true);
+
+      Swal.fire({
+        icon: 'error',
+        title: 'Error al actualizar',
+        text: msg,
+        confirmButtonColor: '#3085d6',
+        heightAuto: false
+      });
     }
   });
 
@@ -206,11 +233,27 @@ export default function Citas() {
       // Limpiar el estado de eliminación
       setDeleteConfirmOpen(false);
       setCitaToDelete(null);
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Eliminada',
+        text: 'La cita ha sido eliminada correctamente.',
+        timer: 1500,
+        showConfirmButton: false,
+        heightAuto: false
+      });
     },
     onError: (err) => {
-      setErrorMessage("Error al eliminar la cita: " + (err.response?.data?.message || err.message));
-      setErrorModalOpen(true);
       setDeleteConfirmOpen(false);
+      setCitaToDelete(null);
+
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: "No se pudo eliminar la cita: " + (err.response?.data?.message || err.message),
+        confirmButtonColor: '#3085d6',
+        heightAuto: false
+      });
     }
   });
 
@@ -319,16 +362,21 @@ export default function Citas() {
   };
 
   const handleDelete = (id) => {
-    setCitaToDelete(id);
-    setDeleteConfirmOpen(true);
-  };
-
-  const confirmDelete = () => {
-    if (citaToDelete) {
-      mutationDelete.mutate(citaToDelete);
-      setDeleteConfirmOpen(false);
-      setCitaToDelete(null);
-    }
+    Swal.fire({
+      title: '¿Eliminar cita?',
+      text: "Esta acción no se puede deshacer y liberará el número de ticket.",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'Sí, eliminar',
+      cancelButtonText: 'Cancelar',
+      heightAuto: false
+    }).then((result) => {
+      if (result.isConfirmed) {
+        mutationDelete.mutate(id);
+      }
+    });
   };
 
   const handleSubmit = (e) => {
@@ -336,26 +384,46 @@ export default function Citas() {
 
     // Validaciones manuales antes de enviar
     if (!formData.paciente_id) {
-      setErrorMessage('Debe seleccionar un paciente para la cita.');
-      setErrorModalOpen(true);
+      Swal.fire({
+        icon: 'warning',
+        title: 'Campo requerido',
+        text: 'Debe seleccionar un paciente para la cita.',
+        confirmButtonColor: '#3085d6',
+        heightAuto: false
+      });
       return;
     }
 
     if (!formData.fecha) {
-      setErrorMessage('La fecha de la cita es obligatoria.');
-      setErrorModalOpen(true);
+      Swal.fire({
+        icon: 'warning',
+        title: 'Campo requerido',
+        text: 'La fecha de la cita es obligatoria.',
+        confirmButtonColor: '#3085d6',
+        heightAuto: false
+      });
       return;
     }
 
     if (!formData.especialidad_id) {
-      setErrorMessage('Debe seleccionar la especialidad (UPS).');
-      setErrorModalOpen(true);
+      Swal.fire({
+        icon: 'warning',
+        title: 'Campo requerido',
+        text: 'Debe seleccionar la especialidad (UPS).',
+        confirmButtonColor: '#3085d6',
+        heightAuto: false
+      });
       return;
     }
 
     if (!formData.nro_ticket) {
-      setErrorMessage('El número de ticket es obligatorio.');
-      setErrorModalOpen(true);
+      Swal.fire({
+        icon: 'warning',
+        title: 'Error de Ticket',
+        text: 'El número de ticket es obligatorio.',
+        confirmButtonColor: '#3085d6',
+        heightAuto: false
+      });
       return;
     }
     
@@ -374,8 +442,13 @@ export default function Citas() {
     }
 
     if (isNaN(ticketValue)) {
-      setErrorMessage("Error: El número de ticket no se ha generado correctamente. Por favor, asegúrese de seleccionar una fecha.");
-      setErrorModalOpen(true);
+      Swal.fire({
+        icon: 'error',
+        title: 'Error de Ticket',
+        text: 'El número de ticket no se ha generado correctamente. Por favor, asegúrese de seleccionar una fecha.',
+        confirmButtonColor: '#3085d6',
+        heightAuto: false
+      });
       return;
     }
 
@@ -797,54 +870,6 @@ export default function Citas() {
             {!viewMode && <Button type="submit" variant="contained" color={selectedCita ? "primary" : "success"} sx={{ px: 4 }}>{selectedCita ? "Actualizar Cita" : "Guardar Cita"}</Button>}
           </DialogActions>
         </form>
-      </Dialog>
-
-      {/* Modal de Alerta/Error */}
-      <Dialog 
-        open={errorModalOpen} 
-        onClose={() => setErrorModalOpen(false)}
-      >
-        <DialogTitle sx={{ bgcolor: 'error.main', color: 'white', fontWeight: 'bold' }}>
-          Validación de Cita
-        </DialogTitle>
-        <DialogContent sx={{ mt: 2 }}>
-          <DialogContentText>
-            {errorMessage}
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
-          <Button 
-            onClick={() => setErrorModalOpen(false)} 
-            variant="contained" 
-            color="error"
-            fullWidth
-          >
-            Entendido
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Modal de Confirmación de Eliminación */}
-      <Dialog
-        open={deleteConfirmOpen}
-        onClose={() => setDeleteConfirmOpen(false)}
-      >
-        <DialogTitle sx={{ bgcolor: 'error.main', color: 'white' }}>
-          Confirmar Eliminación
-        </DialogTitle>
-        <DialogContent sx={{ mt: 2 }}>
-          <DialogContentText>
-            ¿Está seguro de que desea eliminar esta cita? Esta acción no se puede deshacer.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteConfirmOpen(false)} color="inherit">
-            Cancelar
-          </Button>
-          <Button onClick={confirmDelete} color="error" variant="contained">
-            Eliminar
-          </Button>
-        </DialogActions>
       </Dialog>
     </Paper>
   );

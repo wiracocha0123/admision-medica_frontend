@@ -13,6 +13,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getPacientes, createPaciente, updatePaciente, deletePaciente, getNextHC } from '../../services/pacientesService';
 import { AuthContext } from '../../contexts/AuthContext';
+import Swal from 'sweetalert2';
 
 export default function Pacientes() {
   const { user } = useContext(AuthContext);
@@ -25,13 +26,7 @@ export default function Pacientes() {
   const [filterGestante, setFilterGestante] = useState('all');
 
   // Estados para modales
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  
-  // Estado para modal de error/validación
-  const [errorModalOpen, setErrorModalOpen] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
 
   const [formData, setFormData] = useState({
     nombre: '',
@@ -77,13 +72,24 @@ export default function Pacientes() {
     mutationFn: (id) => deletePaciente(id),
     onSuccess: () => {
       queryClient.invalidateQueries(['pacientes']);
-      setDeleteConfirmOpen(false);
-      setItemToDelete(null);
+      Swal.fire({
+        icon: 'success',
+        title: '¡Eliminado!',
+        text: 'El paciente ha sido eliminado correctamente.',
+        timer: 1500,
+        showConfirmButton: false,
+        heightAuto: false
+      });
     },
     onError: (err) => {
       const msg = err.response?.data?.message || err.message;
-      setErrorMessage('Error al eliminar: ' + msg);
-      setErrorModalOpen(true);
+      Swal.fire({
+        icon: 'error',
+        title: 'Error al eliminar',
+        text: msg,
+        confirmButtonColor: '#3085d6',
+        heightAuto: false
+      });
     }
   });
 
@@ -94,14 +100,22 @@ export default function Pacientes() {
       }
       return createPaciente(payload);
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries(['pacientes']);
       setEditDialogOpen(false);
+      
+      Swal.fire({
+        icon: 'success',
+        title: variables.id ? '¡Actualizado!' : '¡Registrado!',
+        text: `Paciente ${variables.id ? 'actualizado' : 'registrado'} correctamente.`,
+        timer: 2000,
+        showConfirmButton: false,
+        heightAuto: false
+      });
     },
     onError: (err) => {
       let msg = err.response?.data?.message || err.message;
       
-      // Traducir mensajes comunes de error del servidor
       if (msg.includes('dni has already been taken')) {
         msg = 'Ya existe un paciente registrado con este DNI.';
       } else if (msg.includes('HistoriaClinica has already been taken')) {
@@ -110,8 +124,13 @@ export default function Pacientes() {
         msg = 'Este correo electrónico ya está en uso.';
       }
 
-      setErrorMessage(msg);
-      setErrorModalOpen(true);
+      Swal.fire({
+        icon: 'error',
+        title: 'Error al guardar',
+        text: msg,
+        confirmButtonColor: '#3085d6',
+        heightAuto: false
+      });
     }
   });
 
@@ -176,20 +195,35 @@ export default function Pacientes() {
     
     // Validaciones manuales antes de enviar
     if (!formData.nombre.trim() || !formData.apellido.trim()) {
-      setErrorMessage('El nombre y el apellido son obligatorios.');
-      setErrorModalOpen(true);
+      Swal.fire({
+        icon: 'warning',
+        title: 'Campos requeridos',
+        text: 'El nombre y el apellido son obligatorios.',
+        confirmButtonColor: '#3085d6',
+        heightAuto: false
+      });
       return;
     }
     
-    if (!formData.dni || formData.dni.length !== 8) {
-      setErrorMessage('El DNI debe tener exactamente 8 dígitos.');
-      setErrorModalOpen(true);
+    if (!formData.dni || String(formData.dni).length !== 8) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'DNI inválido',
+        text: 'El DNI debe tener exactamente 8 dígitos.',
+        confirmButtonColor: '#3085d6',
+        heightAuto: false
+      });
       return;
     }
 
     if (!formData.direccion || !formData.direccion.trim()) {
-      setErrorMessage('La dirección es un campo requerido.');
-      setErrorModalOpen(true);
+      Swal.fire({
+        icon: 'warning',
+        title: 'Campo requerido',
+        text: 'La dirección es obligatoria.',
+        confirmButtonColor: '#3085d6',
+        heightAuto: false
+      });
       return;
     }
 
@@ -197,14 +231,21 @@ export default function Pacientes() {
   };
 
   const handleOpenDeleteConfirm = (id) => {
-    setItemToDelete(id);
-    setDeleteConfirmOpen(true);
-  };
-
-  const confirmDelete = () => {
-    if (itemToDelete) {
-      deleteMutation.mutate(itemToDelete);
-    }
+    Swal.fire({
+      title: '¿Estás seguro?',
+      text: "Esta acción eliminará permanentemente el registro del paciente.",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'Sí, eliminar',
+      cancelButtonText: 'Cancelar',
+      heightAuto: false
+    }).then((result) => {
+      if (result.isConfirmed) {
+        deleteMutation.mutate(id);
+      }
+    });
   };
 
   return (
@@ -430,47 +471,6 @@ export default function Pacientes() {
             </Button>
           </DialogActions>
         </form>
-      </Dialog>
-
-      {/* Modal Confirmar Eliminación */}
-      <Dialog open={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)}>
-        <DialogTitle>Confirmar Eliminación</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            ¿Estás seguro de que deseas eliminar permanentemente a este paciente? Esta acción no se puede deshacer.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteConfirmOpen(false)} color="inherit">Cancelar</Button>
-          <Button onClick={confirmDelete} color="error" variant="contained" autoFocus disabled={deleteMutation.isLoading}>
-            {deleteMutation.isLoading ? 'Eliminando...' : 'Eliminar'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Modal de Alerta/Error */}
-      <Dialog 
-        open={errorModalOpen} 
-        onClose={() => setErrorModalOpen(false)}
-      >
-        <DialogTitle sx={{ bgcolor: 'error.main', color: 'white', fontWeight: 'bold' }}>
-          Información Requerida
-        </DialogTitle>
-        <DialogContent sx={{ mt: 2 }}>
-          <DialogContentText>
-            {errorMessage}
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
-          <Button 
-            onClick={() => setErrorModalOpen(false)} 
-            variant="contained" 
-            color="error"
-            fullWidth
-          >
-            Entendido
-          </Button>
-        </DialogActions>
       </Dialog>
     </Paper>
   );

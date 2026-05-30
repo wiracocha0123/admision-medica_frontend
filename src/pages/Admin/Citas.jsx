@@ -8,7 +8,8 @@ import {
 import { 
   Refresh as RefreshIcon, CalendarMonth as CalendarIcon, Edit as EditIcon, 
   Delete as DeleteIcon, Visibility as VisibilityIcon, Add as AddIcon,
-  Search as SearchIcon, FilterList as FilterIcon, Settings as SettingsIcon
+  Search as SearchIcon, FilterList as FilterIcon, Settings as SettingsIcon,
+  PictureAsPdf as PdfIcon
 } from "@mui/icons-material";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getCitas, createCita, updateCita, deleteCita } from "../../services/citasService";
@@ -18,6 +19,8 @@ import { getPersonalSalud } from "../../services/personalService";
 import { getEspecialidades } from "../../services/especialidadesService";
 import { AuthContext } from "../../contexts/AuthContext";
 import Swal from "sweetalert2";
+import { jsPDF } from "jspdf";
+import "jspdf-autotable";
 
 export default function Citas() {
   const { user } = useContext(AuthContext);
@@ -452,7 +455,6 @@ export default function Citas() {
       return;
     }
 
-    // Si es edición, permitimos que algunos campos sean opcionales si ya tenían datos
     const payload = {
       paciente_id: formData.paciente_id,
       personal_salud_id: formData.personal_salud_id || null,
@@ -470,6 +472,83 @@ export default function Citas() {
     } else {
       mutationCreate.mutate(payload);
     }
+  };
+
+  const handleDownloadPDF = (cita) => {
+    const doc = new jsPDF({
+      unit: 'mm',
+      format: [80, 140] // Aumentamos un poco el largo para incluir más datos
+    });
+
+    const centroSalud = "CENTRO DE SALUD DE SAN VICENTE DE CAÑETE";
+    const fechaActual = new Date().toLocaleString();
+
+    // Formatear fecha de la cita (quitar T05:00:00...)
+    const fechaLimpia = cita.fecha ? cita.fecha.split('T')[0] : 'No definida';
+
+    // Cabecera
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    // Dividir título largo si es necesario
+    const splitTitle = doc.splitTextToSize(centroSalud, 70);
+    doc.text(splitTitle, 40, 10, { align: "center" });
+    
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.text("COMPROBANTE DE CITA MÉDICA", 40, 20, { align: "center" });
+    doc.line(5, 22, 75, 22);
+
+    // TICKET (Grande)
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text(`TICKET N°: ${cita.nro_ticket}`, 40, 30, { align: "center" });
+    
+    // Cuerpo del ticket
+    doc.setFontSize(9);
+    doc.text(`ESPECIALIDAD:`, 5, 40);
+    doc.setFont("helvetica", "normal");
+    doc.text(`${cita.especialidad?.especialidad || cita.especialidad?.nombre || 'General'}`, 5, 45);
+
+    doc.setFont("helvetica", "bold");
+    doc.text(`PACIENTE:`, 5, 55);
+    doc.setFont("helvetica", "normal");
+    const pacienteNombre = `${cita.paciente?.apellido || ''}, ${cita.paciente?.nombre || ''}`;
+    doc.text(pacienteNombre.length > 35 ? pacienteNombre.substring(0,35) + "..." : pacienteNombre, 5, 60);
+    doc.text(`DNI: ${cita.paciente?.dni || cita.paciente?.DNI || '-'}`, 5, 65);
+    doc.text(`H.C.: ${cita.paciente?.HistoriaClinica || cita.paciente?.historia_clinica || 'Sin registro'}`, 5, 70);
+
+    doc.setFont("helvetica", "bold");
+    doc.text(`FECHA CITA:`, 5, 80);
+    doc.setFont("helvetica", "normal");
+    doc.text(`${fechaLimpia}`, 5, 85);
+
+    doc.setFont("helvetica", "bold");
+    doc.text(`HORA:`, 45, 80);
+    doc.setFont("helvetica", "normal");
+    doc.text(`${cita.hora || '--:--'}`, 45, 85);
+
+    doc.setFont("helvetica", "bold");
+    doc.text(`MÉDICO / CONSULTORIO:`, 5, 95);
+    doc.setFont("helvetica", "normal");
+    const medicoNombre = `${cita.personal?.apellidos || cita.personal_salud?.apellidos || 'POR ASIGNAR'}`;
+    doc.text(medicoNombre, 5, 100);
+
+    doc.line(5, 105, 75, 105);
+    doc.setFontSize(7);
+    doc.text("Por favor estar 15 minutos antes de su cita.", 40, 110, { align: "center" });
+    doc.text(`Emitido: ${fechaActual}`, 40, 115, { align: "center" });
+    doc.text(`Atendido por: ${user?.name || 'Admisión'}`, 40, 120, { align: "center" });
+
+    doc.save(`Ticket_Cita_${cita.nro_ticket}.pdf`);
+    
+    Swal.fire({
+      icon: 'success',
+      title: 'PDF Generado',
+      text: 'El ticket se ha descargado.',
+      timer: 1500,
+      showConfirmButton: false,
+      heightAuto: false
+    });
   };
 
   // Con los cambios en el backend, la estructura es directa de Laravel Pagination
@@ -689,6 +768,11 @@ export default function Citas() {
                   </TableCell>
                   <TableCell align="center">
                     <Stack direction="row" spacing={0.5} sx={{ justifyContent: "center" }}>
+                      <Tooltip title="Imprimir Ticket">
+                        <IconButton size="small" color="secondary" onClick={() => handleDownloadPDF(cita)}>
+                          <PdfIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
                       <IconButton size="small" color="info" onClick={() => handleOpenView(cita)}><VisibilityIcon fontSize="small" /></IconButton>
                       <IconButton size="small" color="primary" onClick={() => handleOpenEdit(cita)}><EditIcon fontSize="small" /></IconButton>
                       <IconButton size="small" color="error" onClick={() => handleDelete(cita.id)}><DeleteIcon fontSize="small" /></IconButton>

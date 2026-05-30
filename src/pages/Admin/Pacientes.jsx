@@ -45,17 +45,18 @@ export default function Pacientes() {
     enabled: !!user,
   });
 
-  const paginationData = data?.data || data || {};
-  const rawItems = Array.isArray(paginationData.data) ? paginationData.data : (Array.isArray(paginationData) ? paginationData : []);
+  // Con los cambios en el backend, la estructura es directa de Laravel Pagination
+  const rawItems = Array.isArray(data?.data) ? data.data : [];
+  const totalPages = data?.last_page || 1;
   
   // Aplicar filtros localmente
   const filteredItems = rawItems.filter(p => {
     const matchesText = 
-      (p.nombre + ' ' + p.apellido).toLowerCase().includes(filterText.toLowerCase()) ||
-      p.dni?.toLowerCase().includes(filterText.toLowerCase());
+      ((p.nombre || '') + ' ' + (p.apellido || '')).toLowerCase().includes(filterText.toLowerCase()) ||
+      (p.dni || p.DNI || '').toLowerCase().includes(filterText.toLowerCase());
 
     const matchesHC = 
-      p.HistoriaClinica?.toLowerCase().includes(filterHC.toLowerCase());
+      (p.HistoriaClinica || '').toLowerCase().includes(filterHC.toLowerCase());
     
     const matchesGestante = 
       filterGestante === 'all' || 
@@ -65,8 +66,7 @@ export default function Pacientes() {
     return matchesText && matchesHC && matchesGestante;
   });
 
-  const items = [...filteredItems].sort((a, b) => b.id - a.id);
-  const totalPages = paginationData.last_page || 1;
+  const items = [...filteredItems].sort((a, b) => (b.id || 0) - (a.id || 0));
 
   const deleteMutation = useMutation({
     mutationFn: (id) => deletePaciente(id),
@@ -275,55 +275,70 @@ export default function Pacientes() {
       </Box>
 
       <Box sx={{ mb: 3, p: 2, bgcolor: '#f8f9fa', borderRadius: 2, border: '1px solid #e9ecef' }}>
-        <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} md={4}>
+        <Grid container spacing={2} sx={{ alignItems: 'center' }}>
+          <Grid size={{ xs: 12, md: 4 }}>
             <TextField
               fullWidth
               size="small"
               placeholder="Buscar por nombre o DNI..."
               value={filterText}
-              onChange={(e) => setFilterText(e.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon color="action" />
-                  </InputAdornment>
-                ),
+              onChange={(e) => {
+                setFilterText(e.target.value);
+                setPage(1);
+              }}
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon color="action" />
+                    </InputAdornment>
+                  ),
+                }
               }}
               sx={{ bgcolor: 'white' }}
             />
           </Grid>
-          <Grid item xs={12} md={3}>
+          <Grid size={{ xs: 12, md: 3 }}>
             <TextField
               fullWidth
               size="small"
               placeholder="H. Clínica (ej: H-5)..."
               value={filterHC}
-              onChange={(e) => setFilterHC(e.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <PeopleIcon fontSize="small" color="action" />
-                  </InputAdornment>
-                ),
+              onChange={(e) => {
+                setFilterHC(e.target.value);
+                setPage(1);
+              }}
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <PeopleIcon fontSize="small" color="action" />
+                    </InputAdornment>
+                  ),
+                }
               }}
               sx={{ bgcolor: 'white' }}
             />
           </Grid>
-          <Grid item xs={12} md={3}>
+          <Grid size={{ xs: 12, md: 3 }}>
             <TextField
               select
               fullWidth
               size="small"
               label="Filtrar por Gestante"
               value={filterGestante}
-              onChange={(e) => setFilterGestante(e.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <FilterIcon fontSize="small" color="action" />
-                  </InputAdornment>
-                ),
+              onChange={(e) => {
+                setFilterGestante(e.target.value);
+                setPage(1);
+              }}
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <FilterIcon fontSize="small" color="action" />
+                    </InputAdornment>
+                  ),
+                }
               }}
               sx={{ bgcolor: 'white' }}
             >
@@ -332,11 +347,16 @@ export default function Pacientes() {
               <MenuItem value="no">No Gestantes</MenuItem>
             </TextField>
           </Grid>
-          <Grid item xs={12} md={2}>
+          <Grid size={{ xs: 12, md: 2 }}>
             <Button 
               fullWidth 
               variant="text" 
-              onClick={() => { setFilterText(''); setFilterGestante('all'); setFilterHC(''); }}
+              onClick={() => { 
+                setFilterText(''); 
+                setFilterGestante('all'); 
+                setFilterHC(''); 
+                setPage(1); 
+              }}
               sx={{ textTransform: 'none' }}
             >
               Limpiar
@@ -386,7 +406,7 @@ export default function Pacientes() {
                     )}
                  </TableCell>
                  <TableCell align="right">
-                    <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                    <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
                       <Tooltip title="Editar">
                         <IconButton size="small" color="primary" onClick={() => handleOpenEdit(p)}>
                           <EditIcon fontSize="small" />

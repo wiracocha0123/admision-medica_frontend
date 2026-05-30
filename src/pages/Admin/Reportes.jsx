@@ -3,7 +3,7 @@ import {
     Paper, Typography, Table, TableBody, TableCell, TableHead, TableRow, 
     Button, Box, CircularProgress, Alert, TableContainer, Skeleton, 
     Chip, Stack, Modal, Fade, List, ListItem, 
-    ListItemText, Divider, Avatar
+    ListItemText, Divider, Avatar, Pagination
 } from '@mui/material';
 import { 
     Assessment as ReportIcon, 
@@ -33,10 +33,11 @@ const modalStyle = {
 export default function Reportes() {
     const [selectedId, setSelectedId] = useState(null);
     const [open, setOpen] = useState(false);
+    const [page, setPage] = useState(1);
 
     const { data: listData, isLoading, error, refetch, isFetching } = useQuery({
-        queryKey: ['reporte-personal'],
-        queryFn: getReportePersonal
+        queryKey: ['reporte-personal', page],
+        queryFn: () => getReportePersonal(page)
     });
 
     const { data: detailData, isLoading: loadingDetail, error: detailError } = useQuery({
@@ -91,7 +92,13 @@ export default function Reportes() {
     };
 
     const items = listData?.data || [];
-    const patientsList = detailData?.data?.pacientes?.data || [];
+    const reportItems = Array.isArray(listData?.data) ? listData.data : [];
+    const totalPages = listData?.last_page || 1;
+
+    // Para el detalle de pacientes en un reporte específico
+    const patientsList = Array.isArray(detailData?.data?.pacientes) 
+        ? detailData.data.pacientes 
+        : (Array.isArray(detailData?.data?.pacientes?.data) ? detailData.data.pacientes.data : []);
 
     return (
         <Paper sx={{ p: 3 }}>
@@ -124,14 +131,14 @@ export default function Reportes() {
                     <TableBody>
                         {isLoading ? (
                             [...Array(5)].map((_, i) => <TableRow key={i}><TableCell colSpan={4}><Skeleton /></TableCell></TableRow>)
-                        ) : items.length === 0 ? (
+                        ) : reportItems.length === 0 ? (
                             <TableRow>
                                 <TableCell colSpan={4} align="center" sx={{ py: 3 }}>
                                     No hay datos disponibles.
                                 </TableCell>
                             </TableRow>
                         ) : (
-                            items.map((it) => (
+                            reportItems.map((it) => (
                                 <TableRow key={it.id} hover>
                                     <TableCell>
                                         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -177,6 +184,16 @@ export default function Reportes() {
                     </TableBody>
                 </Table>
             </TableContainer>
+
+            <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
+                <Pagination 
+                    count={totalPages} 
+                    page={page} 
+                    onChange={(_, v) => setPage(v)} 
+                    color="primary" 
+                    disabled={isFetching} 
+                />
+            </Box>
 
             <Modal open={open} onClose={handleClose} closeAfterTransition>
                 <Fade in={open}>

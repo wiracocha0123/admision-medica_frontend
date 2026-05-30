@@ -399,7 +399,7 @@ export default function AdminLayout() {
                 return location.pathname.startsWith(item.path);
               })()}
             >
-              <ListItemIcon sx={{ minWidth: 0, mr: 2, justifyContent: 'center' }}>
+              <ListItemIcon sx={{ minWidth: 0, mr: 2, display: 'flex', justifyContent: 'center' }}>
                 {item.icon}
               </ListItemIcon>
               <ListItemText primary={item.text} />

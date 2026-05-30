@@ -65,8 +65,8 @@ export default function Citas() {
     queryFn: async () => {
       try {
         const res = await api.get(`/citas?page=all&fecha=${hoyStr}`);
-        const responseData = res.data?.data?.data || res.data?.data || res.data || [];
-        const itemsList = Array.isArray(responseData) ? responseData : [];
+        const responseData = res.data?.data || res.data || [];
+        const itemsList = Array.isArray(responseData) ? responseData : (Array.isArray(responseData.data) ? responseData.data : []);
         if (itemsList.length > 0) {
           // Si hay citas, tomamos el total_tickets_dia de la primera
           return parseInt(itemsList[0].total_tickets_dia) || 16;
@@ -90,8 +90,8 @@ export default function Citas() {
     queryFn: async () => {
       try {
         const res = await api.get(`/citas?page=all&fecha=${hoyStr}`);
-        const responseData = res.data?.data?.data || res.data?.data || res.data || [];
-        const itemsList = Array.isArray(responseData) ? responseData : [];
+        const responseData = res.data?.data || res.data || [];
+        const itemsList = Array.isArray(responseData) ? responseData : (Array.isArray(responseData.data) ? responseData.data : []);
         return itemsList.length > 0;
       } catch (err) { return false; }
     },
@@ -472,8 +472,9 @@ export default function Citas() {
     }
   };
 
-  const paginationData = citasData?.data || citasData || {};
-  const allItems = Array.isArray(paginationData.data) ? paginationData.data : (Array.isArray(paginationData) ? paginationData : []);
+  // Con los cambios en el backend, la estructura es directa de Laravel Pagination
+  const allItems = Array.isArray(citasData?.data) ? citasData.data : [];
+  const totalPages = citasData?.last_page || 1;
   
   // Filtrado local (Considerando que el backend no soporta filtros por ahora)
   const items = allItems.filter(cita => {
@@ -490,8 +491,6 @@ export default function Citas() {
 
     return matchesSearch && matchesEstado && matchesFecha && matchesEspecialidad;
   });
-
-  const totalPages = paginationData.last_page || 1;
 
   const getEstadoColor = (estado) => {
     switch (estado?.toString().toLowerCase()) {
@@ -610,6 +609,7 @@ export default function Citas() {
                 setFilterEstado("todos"); 
                 setFilterFecha(""); 
                 setFilterEspecialidad("todas");
+                setCurrentPage(1);
               }}
               startIcon={<FilterIcon />}
               sx={{ minWidth: 0 }}

@@ -3,14 +3,15 @@ import {
   Paper, Typography, Table, TableBody, TableCell, TableHead, TableRow, 
   Button, Box, CircularProgress, Alert, TableContainer, Skeleton, 
   Pagination, Stack, Dialog, DialogTitle, DialogContent, 
-  DialogActions, TextField, IconButton 
+  DialogActions, TextField, IconButton, InputAdornment 
 } from '@mui/material';
 import { 
   Refresh as RefreshIcon, 
   Category as CategoryIcon, 
   Add as AddIcon, 
   Edit as EditIcon, 
-  Delete as DeleteIcon 
+  Delete as DeleteIcon,
+  Search as SearchIcon 
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
@@ -90,24 +91,38 @@ export default function Especialidades() {
       text: 'No podrás revertir esto',
       icon: 'warning',
       showCancelButton: true,
-      confirmButtonText: 'Sí, eliminar'
+      confirmButtonText: 'Sí, eliminar',
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
     }).then(r => r.isConfirmed && mutationDelete.mutate(id));
   };
 
-  const getItems = () => {
-    const d = data?.data || data || {};
-    return Array.isArray(d.data) ? d.data : Array.isArray(d) ? d : [];
-  };
-
-  const items = getItems();
+  // Con el backend corregido, la respuesta es el objeto de paginación directo
+  const paginationData = data || {};
   
-  // Filtrado local
-  const filteredItems = items.filter(esp => 
-    esp.UPS?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    esp.especialidad?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Extraemos los items: Soporta tanto si vienen en .data (estándar) como si vienen directo
+  const rawItems = Array.isArray(paginationData.data) 
+    ? paginationData.data 
+    : (Array.isArray(data) ? data : []);
+    
+  const totalPages = paginationData.last_page || 1;
 
-  const totalPages = data?.data?.last_page || data?.last_page || 1;
+  // Mapeo flexible para nombres de columnas
+  const items = rawItems.map(it => ({
+    ...it,
+    id: it.id || it.pk || it.especialidad_id,
+    UPS: it.UPS || it.ups || it.codigo || '',
+    especialidad: it.especialidad || it.nombre || it.name || it.description || ''
+  }));
+
+  // Filtrado local de seguridad
+  const filteredItems = items.filter(esp => {
+    const term = searchTerm.toLowerCase();
+    return (
+      String(esp.UPS || "").toLowerCase().includes(term) ||
+      String(esp.especialidad || "").toLowerCase().includes(term)
+    );
+  });
 
   return (
     <Paper sx={{ p: 3 }}>
@@ -127,23 +142,36 @@ export default function Especialidades() {
       </Box>
 
       {/* Fila de Filtros (Debajo de la cabecera) */}
-      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'flex-start' }}>
+      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: 2 }}>
         <TextField
           size="small"
           placeholder="Buscar por UPS o especialidad..."
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          onChange={(e) => {
+            setSearchTerm(e.target.value);
+            setPage(1);
+          }}
           sx={{ width: 350 }}
           slotProps={{
             input: {
               startAdornment: (
-                <Box sx={{ mr: 1, color: 'text.secondary', display: 'flex' }}>
-                  <RefreshIcon fontSize="small" sx={{ transform: 'rotate(90deg)' }} /> 
-                </Box>
+                <InputAdornment position="start">
+                  <SearchIcon color="action" fontSize="small" />
+                </InputAdornment>
               ),
             }
           }}
         />
+        <Button 
+          variant="text" 
+          onClick={() => {
+            setSearchTerm('');
+            setPage(1);
+          }}
+          sx={{ textTransform: 'none' }}
+        >
+          Limpiar
+        </Button>
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error.message}</Alert>}
@@ -163,17 +191,25 @@ export default function Especialidades() {
               [...Array(5)].map((_, i) => <TableRow key={i}><TableCell colSpan={4}><Skeleton /></TableCell></TableRow>)
             ) : filteredItems.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={4} align="center">No se encontraron resultados.</TableCell>
+                <TableCell colSpan={4} align="center" sx={{ py: 3 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    No se encontraron especialidades. {searchTerm && `(Búsqueda: "${searchTerm}")`}
+                  </Typography>
+                </TableCell>
               </TableRow>
             ) : (
               filteredItems.map(esp => (
                 <TableRow key={esp.id} hover>
                   <TableCell>{esp.id}</TableCell>
-                  <TableCell><b>{esp.UPS}</b></TableCell>
-                  <TableCell>{esp.especialidad}</TableCell>
+                  <TableCell><b>{esp.UPS || esp.ups}</b></TableCell>
+                  <TableCell>{esp.especialidad || esp.nombre}</TableCell>
                   <TableCell align="right">
-                    <IconButton color="primary" onClick={() => handleOpen(esp)}><EditIcon /></IconButton>
-                    <IconButton color="error" onClick={() => handleDelete(esp.id)}><DeleteIcon /></IconButton>
+                    <IconButton color="primary" onClick={() => handleOpen(esp)} size="small">
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton color="error" onClick={() => handleDelete(esp.id)} size="small">
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
                   </TableCell>
                 </TableRow>
               ))

@@ -243,23 +243,22 @@ export default function Personal() {
     });
   };
 
-  const paginationData = data?.data || data || {};
-  const rawItems = Array.isArray(paginationData.data) ? paginationData.data : (Array.isArray(paginationData) ? paginationData : []);
+  // Con los cambios en el backend, la estructura es directa de Laravel Pagination
+  const items = Array.isArray(data?.data) ? data.data : [];
+  const totalPages = data?.last_page || 1;
   
   // Aplicar filtros localmente para una respuesta inmediata
-  const items = rawItems.filter(p => {
+  const filteredItems = items.filter(p => {
     const matchesText = 
       (p.nombres + ' ' + p.apellidos).toLowerCase().includes(filterText.toLowerCase()) ||
       p.dni?.includes(filterText);
     
     const matchesEspecialidad = 
       filterEspecialidad === 'all' || 
-      p.especialidad_id === filterEspecialidad;
+      String(p.especialidad_id) === String(filterEspecialidad);
       
     return matchesText && matchesEspecialidad;
   });
-
-  const totalPages = paginationData.last_page || 1;
 
   const formatHora = (val) => {
     if (!val) return '-';
@@ -299,13 +298,16 @@ export default function Personal() {
       {/* Sección de Filtros */}
       <Box sx={{ mb: 3, p: 2, bgcolor: '#f8f9fa', borderRadius: 2, border: '1px solid #e9ecef' }}>
         <Grid container spacing={2} sx={{ alignItems: 'center' }}>
-          <Grid item xs={12} md={6}>
+          <Grid size={{ xs: 12, md: 6 }}>
             <TextField
               fullWidth
               size="small"
               placeholder="Buscar por nombre o DNI..."
               value={filterText}
-              onChange={(e) => setFilterText(e.target.value)}
+              onChange={(e) => {
+                setFilterText(e.target.value);
+                setPage(1);
+              }}
               slotProps={{
                 input: {
                   startAdornment: (
@@ -318,20 +320,25 @@ export default function Personal() {
               sx={{ bgcolor: 'white' }}
             />
           </Grid>
-          <Grid item xs={12} md={4}>
+          <Grid size={{ xs: 12, md: 4 }}>
             <TextField
               select
               fullWidth
               size="small"
               label="Especialidad / UPS"
               value={filterEspecialidad}
-              onChange={(e) => setFilterEspecialidad(e.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <FilterIcon fontSize="small" color="action" />
-                  </InputAdornment>
-                ),
+              onChange={(e) => {
+                setFilterEspecialidad(e.target.value);
+                setPage(1);
+              }}
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <FilterIcon fontSize="small" color="action" />
+                    </InputAdornment>
+                  ),
+                }
               }}
               sx={{ bgcolor: 'white', minWidth: 220 }}
             >
@@ -343,11 +350,15 @@ export default function Personal() {
               ))}
             </TextField>
           </Grid>
-          <Grid item xs={12} md={2}>
+          <Grid size={{ xs: 12, md: 2 }}>
             <Button 
               fullWidth 
               variant="text" 
-              onClick={() => { setFilterText(''); setFilterEspecialidad('all'); }}
+              onClick={() => { 
+                setFilterText(''); 
+                setFilterEspecialidad('all'); 
+                setPage(1);
+              }}
               sx={{ textTransform: 'none' }}
             >
               Limpiar
@@ -372,8 +383,8 @@ export default function Personal() {
           </TableHead>
           <TableBody>
             {isLoading ? [...Array(5)].map((_, i) => <TableRow key={i}><TableCell colSpan={7}><Skeleton /></TableCell></TableRow>) : 
-             items.length === 0 ? <TableRow><TableCell colSpan={7} align="center">No hay personal registrado.</TableCell></TableRow> :
-             items.map((p) => {
+             filteredItems.length === 0 ? <TableRow><TableCell colSpan={7} align="center">No hay personal registrado.</TableCell></TableRow> :
+             filteredItems.map((p) => {
                const horario = p.horario_semanal;
                return (
                  <TableRow key={p.id} hover>

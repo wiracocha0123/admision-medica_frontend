@@ -1,6 +1,6 @@
 import React, { useState, useContext } from 'react';
-import { Paper, Typography, Table, TableBody, TableCell, TableHead, TableRow, Button, Box, Avatar, CircularProgress, TableContainer, Skeleton, Stack, Pagination } from '@mui/material';
-import { Refresh as RefreshIcon } from '@mui/icons-material';
+import { Paper, Typography, Table, TableBody, TableCell, TableHead, TableRow, Button, Box, Avatar, CircularProgress, TableContainer, Skeleton, Stack, Pagination, TextField, InputAdornment } from '@mui/material';
+import { Refresh as RefreshIcon, Search as SearchIcon } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import { getUsers } from '../../services/usersService';
 import { AuthContext } from '../../contexts/AuthContext';
@@ -8,6 +8,7 @@ import { AuthContext } from '../../contexts/AuthContext';
 export default function Users() {
   const { user } = useContext(AuthContext);
   const [page, setPage] = useState(1);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['users', page],
@@ -15,9 +16,19 @@ export default function Users() {
     enabled: !!user,
   });
 
-  const paginationData = data?.data || data || {};
-  const items = Array.isArray(paginationData.data) ? paginationData.data : (Array.isArray(paginationData) ? paginationData : []);
-  const totalPages = paginationData.last_page || 1;
+  // Con los cambios en el backend, la estructura es directa de Laravel Pagination
+  const rawItems = Array.isArray(data?.data) ? data.data : [];
+  const totalPages = data?.last_page || 1;
+
+  // Aplicar filtrado local para búsqueda inmediata
+  const items = rawItems.filter(u => {
+    const text = searchTerm.toLowerCase();
+    return (
+      (u.name || '').toLowerCase().includes(text) ||
+      (u.email || '').toLowerCase().includes(text) ||
+      (u.role || '').toLowerCase().includes(text)
+    );
+  });
 
   return (
     <Paper sx={{ p: 3 }}>
@@ -27,6 +38,39 @@ export default function Users() {
       </Box>
 
       {isError && <Typography color="error" sx={{ mb: 2 }}>{error.message || 'Error al cargar datos'}</Typography>}
+
+      {/* Sección de Filtros */}
+      <Box sx={{ mb: 3, p: 2, bgcolor: '#f8f9fa', borderRadius: 2, border: '1px solid #e9ecef', display: 'flex', gap: 2, alignItems: 'center' }}>
+        <TextField
+          size="small"
+          placeholder="Buscar por nombre, email o rol..."
+          value={searchTerm}
+          onChange={(e) => {
+            setSearchTerm(e.target.value);
+            setPage(1);
+          }}
+          sx={{ width: 400, bgcolor: 'white' }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon color="action" fontSize="small" />
+                </InputAdornment>
+              ),
+            }
+          }}
+        />
+        <Button 
+          variant="text" 
+          onClick={() => {
+            setSearchTerm('');
+            setPage(1);
+          }}
+          sx={{ textTransform: 'none' }}
+        >
+          Limpiar
+        </Button>
+      </Box>
 
       <TableContainer sx={{ minHeight: 400 }}>
         <Table>

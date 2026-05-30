@@ -1,6 +1,6 @@
 import React, { useState, useContext } from 'react';
-import { Paper, Typography, Table, TableBody, TableCell, TableHead, TableRow, Button, Box, Avatar, CircularProgress, TableContainer, Dialog, DialogTitle, DialogContent, DialogActions, TextField, IconButton, Tooltip, Stack, Skeleton, Pagination } from '@mui/material';
-import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Visibility as VisibilityIcon, Refresh as RefreshIcon } from '@mui/icons-material';
+import { Paper, Typography, Table, TableBody, TableCell, TableHead, TableRow, Button, Box, Avatar, CircularProgress, TableContainer, Dialog, DialogTitle, DialogContent, DialogActions, TextField, IconButton, Tooltip, Stack, Skeleton, Pagination, InputAdornment } from '@mui/material';
+import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Visibility as VisibilityIcon, Refresh as RefreshIcon, Search as SearchIcon } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getOperadores, createOperador, updateOperador, deleteOperador } from '../../services/operadoresService';
 import { AuthContext } from '../../contexts/AuthContext';
@@ -13,6 +13,7 @@ export default function Operadores() {
   const queryClient = useQueryClient();
 
   const [page, setPage] = useState(1);
+  const [searchTerm, setSearchTerm] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState('create');
   const [current, setCurrent] = useState(null);
@@ -27,9 +28,20 @@ export default function Operadores() {
     enabled: !!user,
   });
 
-  const paginationData = data?.data || data || {};
-  const items = Array.isArray(paginationData.data) ? paginationData.data : (Array.isArray(paginationData) ? paginationData : []);
-  const totalPages = paginationData.last_page || 1;
+  // Con los cambios en el backend, la estructura es directa de Laravel Pagination
+  const rawItems = Array.isArray(data?.data) ? data.data : [];
+  const totalPages = data?.last_page || 1;
+
+  // Filtrado local para búsqueda inmediata
+  const items = rawItems.filter(it => {
+    const text = searchTerm.toLowerCase();
+    return (
+      (it.nombre || '').toLowerCase().includes(text) ||
+      (it.apellido || '').toLowerCase().includes(text) ||
+      (it.usuario || it.user || '').toLowerCase().includes(text) ||
+      (it.DNI || it.dni || '').includes(text)
+    );
+  });
 
   const saveMutation = useMutation({
     mutationFn: (payload) => {
@@ -220,6 +232,39 @@ export default function Operadores() {
       </Box>
 
       {isError && <Typography color="error">{error?.message || 'Error al cargar datos'}</Typography>}
+
+      {/* Sección de Filtros */}
+      <Box sx={{ mb: 3, p: 2, bgcolor: '#f8f9fa', borderRadius: 2, border: '1px solid #e9ecef', display: 'flex', gap: 2, alignItems: 'center' }}>
+        <TextField
+          size="small"
+          placeholder="Buscar por nombre, usuario o DNI..."
+          value={searchTerm || ''}
+          onChange={(e) => {
+            setSearchTerm(e.target.value);
+            setPage(1);
+          }}
+          sx={{ width: 400, bgcolor: 'white' }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon color="action" />
+                </InputAdornment>
+              ),
+            }
+          }}
+        />
+        <Button 
+          variant="text" 
+          onClick={() => {
+            setSearchTerm('');
+            setPage(1);
+          }}
+          sx={{ textTransform: 'none' }}
+        >
+          Limpiar
+        </Button>
+      </Box>
 
       <TableContainer sx={{ minHeight: 400 }}>
         <Table>

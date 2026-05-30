@@ -6,7 +6,7 @@ import { getOperadores } from '../../services/operadoresService';
 import { getPacientes } from '../../services/pacientesService';
 import { getEspecialidades } from '../../services/especialidadesService';
 import { getCitas } from '../../services/citasService';
-import { XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend } from 'recharts';
+import { XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend, LineChart, Line, AreaChart, Area } from 'recharts';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
 
@@ -52,19 +52,39 @@ function StatCard({ title, value, loading, color = 'primary', icon = '👥' }) {
 export default function Dashboard() {
   const [selectedStaff, setSelectedStaff] = useState('all');
   
-  const { data: staffData, isLoading: l1 } = useQuery({ queryKey: ['stat-staff'], queryFn: () => getPersonalSalud(1), retry: 1 });
-  const { data: operators, isLoading: l2 } = useQuery({ queryKey: ['stat-ops'], queryFn: () => getOperadores(1), retry: 1 });
-  const { data: patients, isLoading: l3 } = useQuery({ queryKey: ['stat-patients'], queryFn: () => getPacientes(1), retry: 1 });
+  const { data: staffData, isLoading: l1 } = useQuery({ 
+    queryKey: ['stat-staff'], 
+    queryFn: () => getPersonalSalud(1), 
+    retry: 1,
+    refetchInterval: 30000 
+  });
+  const { data: operators, isLoading: l2 } = useQuery({ 
+    queryKey: ['stat-ops'], 
+    queryFn: () => getOperadores(1), 
+    retry: 1,
+    refetchInterval: 30000
+  });
+  const { data: patients, isLoading: l3 } = useQuery({ 
+    queryKey: ['stat-patients'], 
+    queryFn: () => getPacientes(1), 
+    retry: 1,
+    refetchInterval: 30000
+  });
   const { data: allAppointments, isLoading: l4 } = useQuery({ 
     queryKey: ['stat-citas-all'], 
     queryFn: async () => {
       const resp = await getCitas(1);
-      // Si el backend pagina y devuelve una lista en .data o .data.data
       return resp?.data?.data || resp?.data || resp || [];
     }, 
-    retry: 1 
+    retry: 1,
+    refetchInterval: 5000
   });
-  const { data: specialtiesData } = useQuery({ queryKey: ['stat-specialties'], queryFn: () => getEspecialidades(1), retry: 1 });
+  const { data: specialtiesData } = useQuery({ 
+    queryKey: ['stat-specialties'], 
+    queryFn: () => getEspecialidades(1), 
+    retry: 1,
+    refetchInterval: 5000 // Sincronizado con las citas
+  });
 
   const specialtiesList = useMemo(() => {
     const data = specialtiesData?.data?.data || specialtiesData?.data || specialtiesData || [];
@@ -137,6 +157,31 @@ export default function Dashboard() {
     // Ordenar de mayor a menor para una mejor visualización
     return data.sort((a, b) => b.value - a.value);
   }, [filteredCitas, specialtiesList]);
+
+  const hourlyData = useMemo(() => {
+    const hours = Array.from({ length: 14 }, (_, i) => {
+      const h = i + 7; // De 7 AM a 8 PM
+      return {
+        hour: h,
+        label: `${h}:00`,
+        cantidad: 0
+      };
+    });
+
+    filteredCitas.forEach(c => {
+      const timeRaw = c.hora || c.time || c.hora_cita || c.hora_atencion;
+      if (!timeRaw) return;
+
+      // Extraer la hora (asumiendo formato HH:mm:ss o similar)
+      const hour = parseInt(timeRaw.split(':')[0]);
+      const hourSlot = hours.find(h => h.hour === hour);
+      if (hourSlot) {
+        hourSlot.cantidad += 1;
+      }
+    });
+
+    return hours;
+  }, [filteredCitas]);
 
   const getCount = (res) => {
     const val = res?.data || res;
@@ -335,6 +380,62 @@ export default function Dashboard() {
                     <Typography variant="h2" sx={{ opacity: 0.2 }}>🍰</Typography>
                     <Typography color="text.secondary" variant="h6">Sin datos</Typography>
                   </Box>
+                )}
+              </Box>
+            </Paper>
+          </Grid>
+
+          {/* Gráfico de Líneas - Distribución Horaria */}
+          <Grid size={12}>
+            <Paper sx={{ p: 4, borderRadius: 3, boxShadow: '0 10px 30px rgba(0,0,0,0.05)', minHeight: 400 }}>
+              <Typography variant="h6" fontWeight={700}>
+                Distribución Horaria de Afluencia
+              </Typography>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 3 }}>
+                Horas con mayor volumen de pacientes (Citas agendadas por hora)
+              </Typography>
+
+              <Box sx={{ width: '100%', height: 350 }}>
+                {l4 ? (
+                  <Skeleton variant="rectangular" width="100%" height={350} sx={{ borderRadius: 2 }} />
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={hourlyData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorQty" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#8884d8" stopOpacity={0.8}/>
+                          <stop offset="95%" stopColor="#8884d8" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eee" />
+                      <XAxis 
+                        dataKey="label" 
+                        fontSize={12}
+                        tick={{ fill: '#666' }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <YAxis 
+                        fontSize={12}
+                        tick={{ fill: '#666' }}
+                        axisLine={false}
+                        tickLine={false}
+                        allowDecimals={false}
+                      />
+                      <ChartTooltip 
+                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                      />
+                      <Area 
+                        type="monotone" 
+                        dataKey="cantidad" 
+                        stroke="#8884d8" 
+                        fillOpacity={1} 
+                        fill="url(#colorQty)" 
+                        strokeWidth={3}
+                        name="Citas"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
                 )}
               </Box>
             </Paper>

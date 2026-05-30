@@ -31,13 +31,29 @@ export default function Pacientes() {
   const [formData, setFormData] = useState({
     nombre: '',
     apellido: '',
+    tipo_documento: 'DNI',
     dni: '',
     HistoriaClinica: '',
     telefono: '',
     email: '',
     direccion: '',
-    gestante: false
+    gestante: false,
+    etapa_vida: 'Adulto',
+    detalle_gestante: ''
   });
+
+  // Lógica de etapa de vida y gestante
+  React.useEffect(() => {
+    if (formData.etapa_vida === 'Gestante') {
+      if (!formData.gestante) {
+        setFormData(prev => ({ ...prev, gestante: true }));
+      }
+    } else {
+      if (formData.gestante) {
+        setFormData(prev => ({ ...prev, gestante: false, detalle_gestante: '' }));
+      }
+    }
+  }, [formData.etapa_vida]);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['pacientes', page],
@@ -114,19 +130,42 @@ export default function Pacientes() {
       });
     },
     onError: (err) => {
-      let msg = err.response?.data?.message || err.message;
+      console.error("DEBUG - Error completo del servidor:", err.response?.data);
       
-      if (msg.includes('dni has already been taken')) {
-        msg = 'Ya existe un paciente registrado con este DNI.';
-      } else if (msg.includes('HistoriaClinica has already been taken')) {
-        msg = 'Este número de Historia Clínica ya está asignado.';
-      } else if (msg.includes('email has already been taken')) {
-        msg = 'Este correo electrónico ya está en uso.';
+      let msg = "Ocurrió un error inesperado al guardar el paciente.";
+      const serverData = err.response?.data;
+
+      // 1. Manejo de errores de validación (Laravel) - Siempre priorizar si serverData es objeto
+      if (serverData && typeof serverData === 'object' && serverData.errors) {
+        const errorList = Object.values(serverData.errors).flat();
+        msg = errorList[0];
+      } 
+      // 2. Errores de Base de Datos (SQLSTATE) - Capturar incluso si viene en un objeto "message" largo
+      else {
+        const errorText = typeof serverData === 'string' ? serverData : (serverData?.message || "");
+        
+        if (errorText.includes('SQLSTATE')) {
+          if (errorText.includes('23505')) {
+            msg = "Ya existe un paciente con este número de documento o Historia Clínica.";
+          } else if (errorText.includes('22001') || errorText.toLowerCase().includes('too long') || errorText.toLowerCase().includes('truncated')) {
+            msg = "El número ingresado es muy largo. Por favor, registre solo el número del documento sin incluir letras como 'CE' o 'DNI'.";
+          } else if (errorText.includes('23503')) {
+            msg = "Error de vinculación: Uno de los datos seleccionados no es válido en el sistema.";
+          } else {
+            msg = "Error de base de datos: Los datos ingresados no son compatibles con el sistema.";
+          }
+        } else if (serverData?.message) {
+          msg = serverData.message;
+        }
       }
+
+      // Traducciones finales de limpieza
+      if (msg.includes('dni has already been taken')) msg = 'Ya existe un paciente registrado con este número de documento.';
+      if (msg.includes('HistoriaClinica has already been taken')) msg = 'Este número de Historia Clínica ya está asignado.';
 
       Swal.fire({
         icon: 'error',
-        title: 'Error al guardar',
+        title: 'No se pudo guardar',
         text: msg,
         confirmButtonColor: '#3085d6',
         heightAuto: false
@@ -140,23 +179,29 @@ export default function Pacientes() {
         id: item.id,
         nombre: item.nombre || '',
         apellido: item.apellido || '',
+        tipo_documento: item.tipo_documento || 'DNI',
         dni: item.dni || '',
         HistoriaClinica: item.HistoriaClinica || '',
         telefono: item.telefono || '',
         email: item.email || '',
         direccion: item.direccion || '',
-        gestante: !!item.gestante
+        gestante: !!item.gestante,
+        etapa_vida: item.etapa_vida || 'Adulto',
+        detalle_gestante: item.detalle_gestante || ''
       });
     } else {
       setFormData({
         nombre: '',
         apellido: '',
+        tipo_documento: 'DNI',
         dni: '',
         HistoriaClinica: '',
         telefono: '',
         email: '',
         direccion: '',
-        gestante: false
+        gestante: false,
+        etapa_vida: 'Adulto',
+        detalle_gestante: ''
       });
     }
     setEditDialogOpen(true);
@@ -166,12 +211,15 @@ export default function Pacientes() {
     setFormData({
       nombre: '',
       apellido: '',
+      tipo_documento: 'DNI',
       dni: '',
       HistoriaClinica: 'Cargando...',
       telefono: '',
       email: '',
       direccion: '',
-      gestante: false
+      gestante: false,
+      etapa_vida: 'Adulto',
+      detalle_gestante: ''
     });
     setEditDialogOpen(true);
 
@@ -205,11 +253,33 @@ export default function Pacientes() {
       return;
     }
     
-    if (!formData.dni || String(formData.dni).length !== 8) {
+    if (formData.tipo_documento === 'DNI' && (!formData.dni || String(formData.dni).length !== 8)) {
       Swal.fire({
         icon: 'warning',
         title: 'DNI inválido',
         text: 'El DNI debe tener exactamente 8 dígitos.',
+        confirmButtonColor: '#3085d6',
+        heightAuto: false
+      });
+      return;
+    }
+
+    if (formData.tipo_documento !== 'DNI' && (!formData.dni || String(formData.dni).length < 5 || String(formData.dni).length > 15)) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'Documento inválido',
+        text: `El número de ${formData.tipo_documento} debe tener entre 5 y 15 caracteres.`,
+        confirmButtonColor: '#3085d6',
+        heightAuto: false
+      });
+      return;
+    }
+
+    if (formData.etapa_vida === 'Gestante' && !formData.detalle_gestante) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'Detalle requerido',
+        text: 'Debe seleccionar un nivel de gestación (A1, A2 o A3).',
         confirmButtonColor: '#3085d6',
         heightAuto: false
       });
@@ -372,10 +442,10 @@ export default function Pacientes() {
           <TableHead>
             <TableRow>
               <TableCell>Paciente</TableCell>
-              <TableCell>DNI</TableCell>
+              <TableCell>Documento</TableCell>
               <TableCell>H. Clínica</TableCell>
-              <TableCell>Teléfono</TableCell>
-              <TableCell>Email</TableCell>
+              <TableCell>Etapa Vida</TableCell>
+              <TableCell>Contacto</TableCell>
               <TableCell>Estado</TableCell>
               <TableCell align="right">Acciones</TableCell>
             </TableRow>
@@ -396,13 +466,40 @@ export default function Pacientes() {
                         </Box>
                     </Box>
                  </TableCell>
-                 <TableCell>{p.dni}</TableCell>
+                 <TableCell>
+                    <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
+                      {p.tipo_documento === 'CE' ? `CE: ${p.dni}` : p.dni}
+                    </Typography>
+                    {p.tipo_documento && p.tipo_documento !== 'DNI' && p.tipo_documento !== 'CE' && (
+                      <Typography variant="caption" color="text.secondary">{p.tipo_documento}</Typography>
+                    )}
+                 </TableCell>
                  <TableCell>{p.HistoriaClinica || '-'}</TableCell>
-                 <TableCell>{p.telefono || '-'}</TableCell>
-                 <TableCell>{p.email || '-'}</TableCell>
+                 <TableCell>
+                    <Chip 
+                      label={p.etapa_vida || 'Adulto'} 
+                      size="small" 
+                      variant="outlined" 
+                      color="primary"
+                      sx={{ fontSize: '0.75rem' }}
+                    />
+                 </TableCell>
+                 <TableCell>
+                    <Typography variant="body2">{p.telefono || '-'}</Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{p.email || '-'}</Typography>
+                 </TableCell>
                  <TableCell>
                     {p.gestante && (
-                      <Chip label="Gestante" size="small" color="secondary" />
+                      <Tooltip title={p.detalle_gestante ? `Detalle: ${p.detalle_gestante}` : "Paciente gestante"}>
+                        <Box>
+                          <Chip label="Gestante" size="small" color="secondary" />
+                          {p.detalle_gestante && (
+                            <Typography variant="caption" sx={{ display: 'block', mt: 0.5, fontWeight: 'bold' }}>
+                              Nivel: {p.detalle_gestante}
+                            </Typography>
+                          )}
+                        </Box>
+                      </Tooltip>
                     )}
                  </TableCell>
                  <TableCell align="right">
@@ -435,52 +532,127 @@ export default function Pacientes() {
           {formData.id ? 'Editar Paciente' : 'Registrar Nuevo Paciente'}
         </DialogTitle>
         <form onSubmit={handleSave} noValidate>
-          <DialogContent>
+          <DialogContent dividers>
             <Stack spacing={2.5}>
-              <TextField 
-                label="Nombres" fullWidth variant="outlined"
-                value={formData.nombre} 
-                onChange={(e) => setFormData({...formData, nombre: e.target.value})} 
-              />
-              <TextField 
-                label="Apellidos" fullWidth variant="outlined"
-                value={formData.apellido} 
-                onChange={(e) => setFormData({...formData, apellido: e.target.value})} 
-              />
-              <TextField 
-                label="DNI" fullWidth variant="outlined"
-                value={formData.dni} 
-                onChange={(e) => setFormData({...formData, dni: e.target.value})} 
-              />
+              <Grid container spacing={2}>
+                <Grid size={6}>
+                  <TextField 
+                    label="Nombres" fullWidth variant="outlined" required
+                    value={formData.nombre} 
+                    onChange={(e) => setFormData({...formData, nombre: e.target.value})} 
+                  />
+                </Grid>
+                <Grid size={6}>
+                  <TextField 
+                    label="Apellidos" fullWidth variant="outlined" required
+                    value={formData.apellido} 
+                    onChange={(e) => setFormData({...formData, apellido: e.target.value})} 
+                  />
+                </Grid>
+              </Grid>
+
+              <Grid container spacing={2}>
+                <Grid size={4}>
+                  <TextField
+                    select
+                    label="Tipo de Doc."
+                    fullWidth
+                    value={formData.tipo_documento}
+                    onChange={(e) => setFormData({...formData, tipo_documento: e.target.value})}
+                  >
+                    <MenuItem value="DNI">DNI</MenuItem>
+                    <MenuItem value="CE">CE (Extranjería)</MenuItem>
+                    <MenuItem value="Pasaporte">Pasaporte</MenuItem>
+                  </TextField>
+                </Grid>
+                <Grid size={8}>
+                  <TextField 
+                    label={formData.tipo_documento === 'DNI' ? "DNI" : "Número de Documento"} 
+                    fullWidth variant="outlined" required
+                    value={formData.dni} 
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      // Mantenemos una longitud razonable en el front (ej. 15), 
+                      // la base de datos es la que restringirá el máximo a 8 si no se ha migrado.
+                      if (val.length <= 15) {
+                        if (formData.tipo_documento === 'DNI') {
+                          if (/^\d*$/.test(val) && val.length <= 8) {
+                            setFormData({...formData, dni: val});
+                          }
+                        } else {
+                          setFormData({...formData, dni: val});
+                        }
+                      }
+                    }} 
+                    helperText={formData.tipo_documento === 'DNI' ? "8 dígitos" : "Ingrese el número sin prefijos (ej: 87451236)"}
+                  />
+                </Grid>
+              </Grid>
+
+              <Grid container spacing={2}>
+                <Grid size={6}>
+                  <TextField
+                    select
+                    label="Etapa de Vida"
+                    fullWidth
+                    value={formData.etapa_vida}
+                    onChange={(e) => setFormData({...formData, etapa_vida: e.target.value})}
+                  >
+                    <MenuItem value="RN">RN (Recién Nacido)</MenuItem>
+                    <MenuItem value="Niño">Niño</MenuItem>
+                    <MenuItem value="Adolescente">Adolescente</MenuItem>
+                    <MenuItem value="Adulto">Adulto</MenuItem>
+                    <MenuItem value="Adulto Mayor">Adulto Mayor</MenuItem>
+                    <MenuItem value="Gestante">Gestante</MenuItem>
+                  </TextField>
+                </Grid>
+                <Grid size={6}>
+                  {formData.etapa_vida === 'Gestante' && (
+                    <TextField
+                      select
+                      label="Detalle de Gestación"
+                      fullWidth
+                      value={formData.detalle_gestante}
+                      onChange={(e) => setFormData({...formData, detalle_gestante: e.target.value})}
+                      sx={{ animation: 'fadeIn 0.5s' }}
+                    >
+                      <MenuItem value="">Seleccione sector...</MenuItem>
+                      <MenuItem value="A1">Sector A1</MenuItem>
+                      <MenuItem value="A2">Sector A2</MenuItem>
+                      <MenuItem value="A3">Sector A3</MenuItem>
+                    </TextField>
+                  )}
+                </Grid>
+              </Grid>
+
               <TextField 
                 label="Historia Clínica" fullWidth variant="outlined"
                 value={formData.HistoriaClinica} 
                 onChange={(e) => setFormData({...formData, HistoriaClinica: e.target.value})}
                 helperText="Se autogenera el siguiente número 'H-X', pero puede modificarlo si es necesario."
               />
+              
+              <Grid container spacing={2}>
+                <Grid size={6}>
+                  <TextField 
+                    label="Teléfono" fullWidth variant="outlined"
+                    value={formData.telefono} 
+                    onChange={(e) => setFormData({...formData, telefono: e.target.value})} 
+                  />
+                </Grid>
+                <Grid size={6}>
+                  <TextField 
+                    label="Email" type="email" fullWidth variant="outlined"
+                    value={formData.email} 
+                    onChange={(e) => setFormData({...formData, email: e.target.value})} 
+                  />
+                </Grid>
+              </Grid>
+
               <TextField 
-                label="Teléfono" fullWidth variant="outlined"
-                value={formData.telefono} 
-                onChange={(e) => setFormData({...formData, telefono: e.target.value})} 
-              />
-              <TextField 
-                label="Email" type="email" fullWidth variant="outlined"
-                value={formData.email} 
-                onChange={(e) => setFormData({...formData, email: e.target.value})} 
-              />
-              <TextField 
-                label="Dirección" fullWidth variant="outlined"
+                label="Dirección" fullWidth variant="outlined" required
                 value={formData.direccion} 
                 onChange={(e) => setFormData({...formData, direccion: e.target.value})} 
-              />
-              <FormControlLabel
-                control={
-                  <Checkbox 
-                    checked={formData.gestante} 
-                    onChange={(e) => setFormData({...formData, gestante: e.target.checked})} 
-                  />
-                }
-                label="¿Es gestante?"
               />
             </Stack>
           </DialogContent>

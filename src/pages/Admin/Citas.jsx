@@ -172,26 +172,40 @@ export default function Citas() {
     },
     onError: (err) => {
       console.error("DEBUG - Error completo del servidor:", err.response?.data);
-      console.error("DEBUG - Status code:", err.response?.status);
       
-      let msg = err.response?.data?.message || err.message || "Error desconocido en el servidor";
-      
-      // Si el error es 500, a veces el mensaje viene en err.response.data (si es texto plano o un JSON de error de Laravel)
+      let msg = "Ocurrió un error inesperado. Por favor, intente de nuevo.";
       const serverData = err.response?.data;
-      if (typeof serverData === 'string' && serverData.includes('SQLSTATE')) {
-        msg = "Error de base de datos. Verifique que todos los campos sean correctos.";
+      const status = err.response?.status;
+
+      // 1. Errores de validación específicos (Campos obligatorios, duplicados, etc.)
+      if (serverData?.errors) {
+        const errorList = Object.values(serverData.errors).flat();
+        msg = errorList[0]; // Mostrar el primer error de validación de forma clara
+      } 
+      // 2. Errores de Base de Datos (SQLSTATE) - Traducir a lenguaje humano
+      else if (typeof serverData === 'string' && serverData.includes('SQLSTATE')) {
+        if (serverData.includes('23503')) {
+          msg = "Error de vinculación: El médico o el paciente seleccionado no son válidos en el sistema.";
+        } else if (serverData.includes('23505')) {
+          msg = "Este registro ya existe (DNI o Ticket duplicado).";
+        } else {
+          msg = "Error de base de datos: Los datos enviados no son compatibles.";
+        }
+      }
+      // 3. Mensaje directo del servidor
+      else if (serverData?.message) {
+        msg = serverData.message;
       }
 
-      if (serverData?.errors) {
-        const errors = serverData.errors;
-        msg = Object.values(errors).flat().join("\n");
-      }
+      // Traducciones comunes para la admisionista
+      if (msg.includes('already been taken')) msg = "El número de ticket ya está ocupado para esta fecha.";
+      if (msg.includes('paciente_id')) msg = "Debe seleccionar un paciente válido de la lista.";
+      if (msg.includes('personal_salud_id')) msg = "Debe seleccionar un médico de la lista.";
 
       Swal.fire({
         icon: 'error',
-        title: 'Error al procesar la cita',
+        title: 'No se pudo registrar la cita',
         text: msg,
-        footer: 'ID Error: ' + (err.response?.status || '500'),
         confirmButtonColor: '#3085d6',
         heightAuto: false
       });

@@ -2,11 +2,15 @@ import React from 'react';
 import { Box, Typography, TextField, Checkbox, FormControlLabel, Grid, Paper } from '@mui/material';
 
 const DIAS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
-const TURNOS = ['Mañana', 'Tarde', 'Noche'];
+const TURNOS = [
+  { id: 'Manana', label: 'Mañana' },
+  { id: 'Tarde', label: 'Tarde' },
+  { id: 'Noche', label: 'Noche' }
+];
 
 /**
  * value: {
- *   "lunes": { "Mañana": "08:00-11:00", "Tarde": "14:00-18:00" },
+ *   "lunes": { "Manana": "08:00-11:00", "Tarde": "14:00-18:00" },
  *   "martes": {}
  * }
  */
@@ -29,10 +33,20 @@ export default function HorarioSemanalPicker({ value, onChange, disabled = false
   const safeValue = { ...normalizedValue };
   DIAS.forEach(dia => {
     if (safeValue[dia] && typeof safeValue[dia] !== 'object') {
-       // Si era un string antiguo como "08:00-14:00", lo movemos a "Mañana" por defecto o limpiamos
-       safeValue[dia] = { "Mañana": safeValue[dia] };
+       // Si era un string antiguo como "08:00-14:00", lo movemos a "Manana" por defecto o limpiamos
+       safeValue[dia] = { "Manana": safeValue[dia] };
     } else if (!safeValue[dia]) {
        safeValue[dia] = {};
+    } else {
+       // Soporte para datos antiguos (migración silenciosa a "Manana")
+       if (safeValue[dia]["Mañana"]) {
+         safeValue[dia]["Manana"] = safeValue[dia]["Mañana"];
+         delete safeValue[dia]["Mañana"];
+       }
+       if (safeValue[dia]["mañana"]) {
+         safeValue[dia]["Manana"] = safeValue[dia]["mañana"];
+         delete safeValue[dia]["mañana"];
+       }
     }
   });
 
@@ -42,14 +56,15 @@ export default function HorarioSemanalPicker({ value, onChange, disabled = false
     // Aseguramos que el día sea un objeto antes de asignar
     if (!newValue[dia] || typeof newValue[dia] !== 'object') {
       newValue[dia] = {};
+    } else {
+      // Clonamos el objeto del día para romper la referencia
+      newValue[dia] = { ...newValue[dia] };
     }
 
     if (isChecked) {
       newValue[dia][turno] = "08:00-14:00"; 
     } else {
-      const dayObj = { ...newValue[dia] };
-      delete dayObj[turno];
-      newValue[dia] = dayObj;
+      delete newValue[dia][turno];
     }
     onChange(newValue);
   };
@@ -57,7 +72,11 @@ export default function HorarioSemanalPicker({ value, onChange, disabled = false
   const handleTimeChange = (dia, turno, type, timeValue) => {
     if (disabled) return;
     const newValue = { ...safeValue };
-    if (!newValue[dia]) newValue[dia] = {};
+    if (!newValue[dia] || typeof newValue[dia] !== 'object') {
+      newValue[dia] = {};
+    } else {
+      newValue[dia] = { ...newValue[dia] };
+    }
     
     let currentStr = newValue[dia][turno] || "00:00-00:00";
     let [start, end] = currentStr.split('-');
@@ -91,11 +110,11 @@ export default function HorarioSemanalPicker({ value, onChange, disabled = false
           </Typography>
           <Grid container spacing={2}>
             {TURNOS.map((turno) => {
-              const checked = hasTurno(dia, turno);
-              const times = getTimes(dia, turno);
+              const checked = hasTurno(dia, turno.id);
+              const times = getTimes(dia, turno.id);
               
               return (
-                <Grid size={{ xs: 12, md: 4 }} key={turno}>
+                <Grid size={{ xs: 12, md: 4 }} key={turno.id}>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, p: 1, border: '1px dashed #e0e0e0', borderRadius: 1, bgcolor: checked ? 'rgba(2, 136, 209, 0.03)' : 'transparent' }}>
                     <FormControlLabel
                       control={
@@ -103,10 +122,10 @@ export default function HorarioSemanalPicker({ value, onChange, disabled = false
                           size="small" 
                           checked={checked} 
                           disabled={disabled}
-                          onChange={(e) => handleTurnoChange(dia, turno, e.target.checked)} 
+                          onChange={(e) => handleTurnoChange(dia, turno.id, e.target.checked)} 
                         />
                       }
-                      label={<Typography variant="body2">{turno}</Typography>}
+                      label={<Typography variant="body2">{turno.label}</Typography>}
                     />
                     {checked && (
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pl: 3 }}>
@@ -116,7 +135,7 @@ export default function HorarioSemanalPicker({ value, onChange, disabled = false
                           variant="standard"
                           disabled={disabled}
                           value={times.start}
-                          onChange={(e) => handleTimeChange(dia, turno, 'start', e.target.value)}
+                          onChange={(e) => handleTimeChange(dia, turno.id, 'start', e.target.value)}
                           slotProps={{ htmlInput: { style: { fontSize: '0.85rem' } } }}
                         />
                         <Typography variant="caption" color="text.secondary">a</Typography>
@@ -126,7 +145,7 @@ export default function HorarioSemanalPicker({ value, onChange, disabled = false
                           variant="standard"
                           disabled={disabled}
                           value={times.end}
-                          onChange={(e) => handleTimeChange(dia, turno, 'end', e.target.value)}
+                          onChange={(e) => handleTimeChange(dia, turno.id, 'end', e.target.value)}
                           slotProps={{ htmlInput: { style: { fontSize: '0.85rem' } } }}
                         />
                       </Box>

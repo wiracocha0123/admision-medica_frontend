@@ -1,7 +1,7 @@
 // src/api.js
 import axios from 'axios';
 
-const RAW_API = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
+const RAW_API = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 export const API_PREFIX = '/api';
 export const API_URL = RAW_API + API_PREFIX;
 

@@ -6,6 +6,7 @@ import { getOperadores, createOperador, updateOperador, deleteOperador } from '.
 import { AuthContext } from '../../contexts/AuthContext';
 import HorarioSemanalPicker from '../../components/HorarioSemanalPicker';
 import HorarioSemanalDisplay from '../../components/HorarioSemanalDisplay';
+import Swal from 'sweetalert2';
 
 export default function Operadores() {
   const { user } = useContext(AuthContext);
@@ -32,27 +33,93 @@ export default function Operadores() {
 
   const saveMutation = useMutation({
     mutationFn: (payload) => {
+      const id = current?.id || current?.pk || current?.operador_id;
       if (dialogMode === 'create') return createOperador(payload);
-      return updateOperador(current.id || current.pk || current.operador_id, payload);
+      return updateOperador(id, payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['operadores'] });
       setDialogOpen(false);
+      
+      // Delay breve para que el Backdrop de MUI desaparezca antes de lanzar Swal
+      setTimeout(() => {
+        Swal.fire({
+          icon: 'success',
+          title: dialogMode === 'create' ? 'Creado' : 'Actualizado',
+          text: `Operador ${dialogMode === 'create' ? 'registrado' : 'actualizado'} correctamente`,
+          timer: 1500,
+          showConfirmButton: false,
+          heightAuto: false,
+        });
+      }, 100);
     },
     onError: (err) => {
-      if (err.response?.status === 422) {
-        setFieldErrors(err.response.data.errors || {});
-        setSaveError(err.response.data.message || 'Errores de validación');
+      const validationErrors = err.response?.data?.errors;
+      const errorMessage = err.response?.data?.message || 'No se pudo guardar la información';
+      
+      if (err.response?.status === 422 && validationErrors) {
+        setFieldErrors(validationErrors);
+        
+        const errorMessages = Object.values(validationErrors).flat();
+        
+        Swal.fire({
+          icon: 'error',
+          title: 'Errores de validación',
+          html: `<ul>${errorMessages.map(m => `<li>${m}</li>`).join('')}</ul>`,
+          confirmButtonColor: '#3085d6',
+          heightAuto: false,
+        });
       } else {
-        setSaveError('Error al guardar operador.');
+        setSaveError(errorMessage);
+        Swal.fire({
+          icon: 'error',
+          title: 'Error',
+          text: errorMessage,
+          confirmButtonColor: '#3085d6',
+          heightAuto: false,
+        });
       }
     }
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id) => deleteOperador(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['operadores'] })
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['operadores'] });
+      Swal.fire({
+        icon: 'success',
+        title: 'Eliminado',
+        text: 'El operador ha sido eliminado',
+        timer: 1500,
+        showConfirmButton: false,
+        heightAuto: false,
+        customClass: {
+          container: 'swal2-container-high-z'
+        }
+      });
+    }
   });
+
+  const handleDelete = (id) => {
+    Swal.fire({
+      title: '¿Estás seguro?',
+      text: "No podrás revertir esta acción",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'Sí, eliminar',
+      cancelButtonText: 'Cancelar',
+      heightAuto: false,
+      customClass: {
+        container: 'swal2-container-high-z'
+      }
+    }).then((result) => {
+      if (result.isConfirmed) {
+        deleteMutation.mutate(id);
+      }
+    });
+  };
 
   const openCreate = () => {
     setDialogMode('create');
@@ -105,15 +172,39 @@ export default function Operadores() {
     setSaveError('');
     setFieldErrors({});
 
-    // Aseguramos que el horario semanal se envíe como string JSON si el backend lo espera así
-    const payload = {
-      ...form,
-      dni: form.DNI,
-      password: form.contraseña,
-      horario_semanal: typeof form.horario_semanal === 'object' 
-        ? JSON.stringify(form.horario_semanal) 
-        : form.horario_semanal
+    const dataToSend = { ...form };
+    
+    // Nos aseguramos que los días vacíos sean objetos {} y no arrays [] antes de enviar
+    const cleanHorario = {};
+    if (dataToSend.horario_semanal) {
+      Object.keys(dataToSend.horario_semanal).forEach(dia => {
+        const valor = dataToSend.horario_semanal[dia];
+        // Si el valor es una lista [] o null, lo forzamos a objeto {}
+        if (Array.isArray(valor) || !valor) {
+          cleanHorario[dia] = {};
+        } else {
+          cleanHorario[dia] = valor;
+        }
+      });
+    }
+
+    const payload = { 
+      ...dataToSend,
+      horario_semanal: cleanHorario 
     };
+
+    console.log("DEBUG - Payload a enviar (Objeto Raw):", payload);
+    console.log("DEBUG - ID del operador:", current?.id || current?.pk || current?.operador_id);
+
+    if (dialogMode === 'edit') {
+      if (!dataToSend.contraseña || dataToSend.contraseña.trim() === '') {
+        delete payload.contraseña;
+      } else {
+        payload.password = dataToSend.contraseña;
+      }
+    } else {
+      payload.password = dataToSend.contraseña;
+    }
     
     saveMutation.mutate(payload);
   };
@@ -167,7 +258,7 @@ export default function Operadores() {
                   <TableCell align="right">
                     <Tooltip title="Ver"><IconButton size="small" onClick={() => openView(it)}><VisibilityIcon fontSize="small" /></IconButton></Tooltip>
                     <Tooltip title="Editar"><IconButton size="small" onClick={() => openEdit(it)}><EditIcon fontSize="small" /></IconButton></Tooltip>
-                    <Tooltip title="Eliminar"><IconButton size="small" color="error" onClick={() => { if (window.confirm('¿Eliminar?')) deleteMutation.mutate(it.id || it.pk || it.operador_id); }}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
+                    <Tooltip title="Eliminar"><IconButton size="small" color="error" onClick={() => handleDelete(it.id || it.pk || it.operador_id)}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
                   </TableCell>
                 </TableRow>
               ))
@@ -180,18 +271,68 @@ export default function Operadores() {
         <Pagination count={totalPages} page={page} onChange={(_, v) => setPage(v)} color="primary" disabled={isFetching} />
       </Box>
 
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="sm">
+      <Dialog 
+        open={dialogOpen} 
+        onClose={() => setDialogOpen(false)} 
+        fullWidth 
+        maxWidth="sm"
+        disableEnforceFocus
+        disableRestoreFocus
+      >
         <DialogTitle>{dialogMode === 'create' ? 'Nuevo Operador' : dialogMode === 'edit' ? 'Editar Operador' : 'Detalles del Operador'}</DialogTitle>
         <DialogContent>
           {saveError && <Typography color="error" sx={{ mb: 1, mt: 1 }}>{saveError}</Typography>}
           <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <TextField label="Nombre" value={form.nombre} onChange={(e) => setForm(s => ({ ...s, nombre: e.target.value }))} disabled={dialogMode === 'view'} error={!!fieldErrors.nombre} helperText={fieldErrors.nombre?.[0]} />
-            <TextField label="Apellido" value={form.apellido} onChange={(e) => setForm(s => ({ ...s, apellido: e.target.value }))} disabled={dialogMode === 'view'} error={!!fieldErrors.apellido} helperText={fieldErrors.apellido?.[0]} />
-            <TextField label="DNI" value={form.DNI} onChange={(e) => setForm(s => ({ ...s, DNI: e.target.value }))} disabled={dialogMode === 'view'} error={!!fieldErrors.dni || !!fieldErrors.DNI} helperText={fieldErrors.dni?.[0] || fieldErrors.DNI?.[0]} />
-            <TextField label="Email" value={form.email} onChange={(e) => setForm(s => ({ ...s, email: e.target.value }))} disabled={dialogMode === 'view'} error={!!fieldErrors.email} helperText={fieldErrors.email?.[0]} />
-            <TextField label="Usuario" value={form.usuario} onChange={(e) => setForm(s => ({ ...s, usuario: e.target.value }))} disabled={dialogMode === 'view' || dialogMode === 'edit'} error={!!fieldErrors.usuario} helperText={fieldErrors.usuario?.[0]} />
+            <TextField 
+              label="Nombre" 
+              value={form.nombre} 
+              onChange={(e) => setForm(s => ({ ...s, nombre: e.target.value }))} 
+              disabled={dialogMode === 'view'} 
+              error={!!fieldErrors.nombre} 
+              helperText={fieldErrors.nombre?.[0]} 
+            />
+            <TextField 
+              label="Apellido" 
+              value={form.apellido} 
+              onChange={(e) => setForm(s => ({ ...s, apellido: e.target.value }))} 
+              disabled={dialogMode === 'view'} 
+              error={!!fieldErrors.apellido} 
+              helperText={fieldErrors.apellido?.[0]} 
+            />
+            <TextField 
+              label="DNI" 
+              value={form.DNI} 
+              onChange={(e) => setForm(s => ({ ...s, DNI: e.target.value }))} 
+              disabled={dialogMode === 'view'} 
+              error={!!fieldErrors.dni || !!fieldErrors.DNI} 
+              helperText={fieldErrors.dni?.[0] || fieldErrors.DNI?.[0]} 
+            />
+            <TextField 
+              label="Email" 
+              value={form.email} 
+              onChange={(e) => setForm(s => ({ ...s, email: e.target.value }))} 
+              disabled={dialogMode === 'view'} 
+              error={!!fieldErrors.email} 
+              helperText={fieldErrors.email?.[0]} 
+            />
+            <TextField 
+              label="Usuario" 
+              value={form.usuario} 
+              onChange={(e) => setForm(s => ({ ...s, usuario: e.target.value }))} 
+              disabled={dialogMode === 'view' || dialogMode === 'edit'} 
+              error={!!fieldErrors.usuario} 
+              helperText={fieldErrors.usuario?.[0]} 
+            />
             {(dialogMode === 'create' || dialogMode === 'edit') && (
-              <TextField label="Contraseña (opcional en edición)" type="password" value={form.contraseña} onChange={(e) => setForm(s => ({ ...s, contraseña: e.target.value }))} error={!!fieldErrors.password || !!fieldErrors.contrasena} helperText={fieldErrors.password?.[0] || fieldErrors.contrasena?.[0]} />
+              <TextField 
+                label="Contraseña (opcional en edición)" 
+                type="password" 
+                value={form.contraseña} 
+                onChange={(e) => setForm(s => ({ ...s, contraseña: e.target.value }))} 
+                error={!!fieldErrors.password || !!fieldErrors.contrasena || !!fieldErrors.contraseña} 
+                helperText={fieldErrors.password?.[0] || fieldErrors.contrasena?.[0] || fieldErrors.contraseña?.[0]} 
+                autoComplete="new-password"
+              />
             )}
             <HorarioSemanalPicker value={form.horario_semanal} onChange={(v) => setForm(s => ({ ...s, horario_semanal: v }))} disabled={dialogMode === 'view'} />
           </Box>

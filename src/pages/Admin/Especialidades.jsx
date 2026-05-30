@@ -134,12 +134,14 @@ export default function Especialidades() {
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           sx={{ width: 350 }}
-          InputProps={{
-            startAdornment: (
-              <Box sx={{ mr: 1, color: 'text.secondary', display: 'flex' }}>
-                <RefreshIcon fontSize="small" sx={{ transform: 'rotate(90deg)' }} /> 
-              </Box>
-            ),
+          slotProps={{
+            input: {
+              startAdornment: (
+                <Box sx={{ mr: 1, color: 'text.secondary', display: 'flex' }}>
+                  <RefreshIcon fontSize="small" sx={{ transform: 'rotate(90deg)' }} /> 
+                </Box>
+              ),
+            }
           }}
         />
       </Box>

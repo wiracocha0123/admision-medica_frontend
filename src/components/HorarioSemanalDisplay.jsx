@@ -12,6 +12,13 @@ const diasMap = {
   domingo: 'Domingo'
 };
 
+const turnosMap = {
+  Manana: 'Mañana',
+  Mañana: 'Mañana',
+  Tarde: 'Tarde',
+  Noche: 'Noche'
+};
+
 const formatHora = (val) => {
   if (!val) return '-';
   // Si ya viene formateado como HH:mm (por strings del backend) o es una cadena con ":" 
@@ -149,7 +156,7 @@ export default function HorarioSemanalDisplay({ horario }) {
                                 <Chip 
                                   key={turnoName} 
                                   size="small" 
-                                  label={`${turnoName}: ${horasFormateadas}`} 
+                                  label={`${turnosMap[turnoName] || turnoName}: ${horasFormateadas}`} 
                                   sx={{ backgroundColor: '#e1f5fe', color: '#0277bd', fontWeight: 500, borderRadius: 1 }} 
                                 />
                               );

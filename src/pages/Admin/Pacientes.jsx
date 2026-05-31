@@ -12,7 +12,7 @@ import {
   FileUpload as ImportIcon
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getPacientes, createPaciente, updatePaciente, deletePaciente, getNextHC } from '../../services/pacientesService';
+import { getPacientes, createPaciente, updatePaciente, deletePaciente, getNextHC, getAllPacientes } from '../../services/pacientesService';
 import { AuthContext } from '../../contexts/AuthContext';
 import Swal from 'sweetalert2';
 import * as XLSX from 'xlsx';
@@ -58,8 +58,8 @@ export default function Pacientes() {
   }, [formData.etapa_vida]);
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['pacientes', page],
-    queryFn: () => getPacientes(page),
+    queryKey: ['pacientes', page, filterText, filterHC, filterGestante],
+    queryFn: () => getPacientes(page, filterText, filterHC, filterGestante),
     enabled: !!user,
   });
 
@@ -71,15 +71,18 @@ export default function Pacientes() {
   const filteredItems = rawItems.filter(p => {
     const matchesText = 
       ((p.nombre || '') + ' ' + (p.apellido || '')).toLowerCase().includes(filterText.toLowerCase()) ||
-      (p.dni || p.DNI || '').toLowerCase().includes(filterText.toLowerCase());
+      (p.dni || p.DNI || '').toString().toLowerCase().includes(filterText.toLowerCase());
 
     const matchesHC = 
       (p.HistoriaClinica || '').toLowerCase().includes(filterHC.toLowerCase());
     
+    // Normalizar el valor de gestante (puede venir como '1', 1, true o boolean)
+    const isGestante = p.gestante === true || p.gestante === 1 || p.gestante === '1' || p.etapa_vida === 'Gestante';
+
     const matchesGestante = 
       filterGestante === 'all' || 
-      (filterGestante === 'yes' && p.gestante) || 
-      (filterGestante === 'no' && !p.gestante);
+      (filterGestante === 'yes' && isGestante) || 
+      (filterGestante === 'no' && !isGestante);
       
     return matchesText && matchesHC && matchesGestante;
   });
@@ -331,97 +334,119 @@ export default function Pacientes() {
         }).then(async (result) => {
           if (result.isConfirmed) {
             Swal.fire({
-              title: 'Importando...',
-              html: 'Progreso: <b>0</b> / ' + data.length,
+              title: 'Optimizando importación...',
+              text: 'Buscando pacientes existentes para evitar duplicados...',
               allowOutsideClick: false,
-              didOpen: () => {
-                Swal.showLoading();
-              },
+              didOpen: () => Swal.showLoading(),
+              heightAuto: false
+            });
+
+            // 1. Obtener lista actual para deduplicación local
+            const existingDnis = new Set();
+            const existingHcs = new Set();
+            try {
+              const currentPacientes = await getAllPacientes();
+              const list = Array.isArray(currentPacientes) ? currentPacientes : (currentPacientes?.data || []);
+              list.forEach(p => {
+                if (p.dni) existingDnis.add(p.dni.toString().trim());
+                if (p.HistoriaClinica) existingHcs.add(p.HistoriaClinica.toString().trim());
+              });
+            } catch (e) { console.error("Error precargando pacientes:", e); }
+
+            // 2. Filtrar los que ya existen para no perder tiempo en red
+            const toImport = data.filter(row => {
+              const dniKey = Object.keys(row).find(k => k.toUpperCase() === 'DNI');
+              const hclKey = Object.keys(row).find(k => k.toUpperCase().includes('HCL') || k.toUpperCase().includes('HISTORIA'));
+              const dni = (row[dniKey] || '').toString().trim();
+              const hcl = (row[hclKey] || '').toString().trim();
+              const formattedHcl = hcl ? (hcl.startsWith('H-') ? hcl : `H-${hcl}`) : '';
+              
+              return !existingDnis.has(dni) && (!formattedHcl || !existingHcs.has(formattedHcl));
+            });
+
+            const skippedCount = data.length - toImport.length;
+
+            if (toImport.length === 0) {
+              Swal.fire({
+                icon: 'info',
+                title: 'Nada nuevo que importar',
+                text: `${skippedCount} registros ya existen en la base de datos.`,
+                heightAuto: false
+              });
+              return;
+            }
+
+            Swal.fire({
+              title: 'Importando...',
+              html: `Progreso: <b>0</b> / ${toImport.length}<br/><small>Omitidos (ya existen): ${skippedCount}</small>`,
+              allowOutsideClick: false,
+              didOpen: () => Swal.showLoading(),
               heightAuto: false
             });
 
             let successCount = 0;
             let errorCount = 0;
-            const CHUNK_SIZE = 10; // Procesar de 10 en 10 para no saturar el servidor
+            const CHUNK_SIZE = 100; // Lotes más grandes para mayor velocidad
 
-            for (let i = 0; i < data.length; i += CHUNK_SIZE) {
-              const chunk = data.slice(i, i + CHUNK_SIZE);
+            for (let i = 0; i < toImport.length; i += CHUNK_SIZE) {
+              const chunk = toImport.slice(i, i + CHUNK_SIZE);
               
               const promises = chunk.map(async (row) => {
-                // 1. Lógica de nombres y apellidos
+                // Lógica de nombres y apellidos
                 const fullNameKey = Object.keys(row).find(k => k.toUpperCase().includes('NOMBRE'));
                 const fullName = (row[fullNameKey] || '').toString().trim();
                 const words = fullName.split(/\s+/).filter(Boolean);
                 
-                let apellido = '';
-                let nombre = '';
-                if (words.length === 0) {
-                  apellido = 'DESCONOCIDO';
-                  nombre = 'PACIENTE';
-                } else if (words.length === 1) {
-                  apellido = words[0];
-                  nombre = '-';
-                } else if (words.length === 2) {
-                  apellido = words[0];
-                  nombre = words[1];
-                } else {
-                  apellido = words[0] + ' ' + words[1];
-                  nombre = words.slice(2).join(' ');
-                }
+                let apellido = '', nombre = '';
+                if (words.length === 0) { apellido = 'DESCONOCIDO'; nombre = 'PACIENTE'; }
+                else if (words.length === 1) { apellido = words[0]; nombre = '-'; }
+                else if (words.length === 2) { apellido = words[0]; nombre = words[1]; }
+                else { apellido = words[0] + ' ' + words[1]; nombre = words.slice(2).join(' '); }
 
-                // 2. Mapeo de campos
                 const dniKey = Object.keys(row).find(k => k.toUpperCase() === 'DNI');
                 const hclKey = Object.keys(row).find(k => k.toUpperCase().includes('HCL') || k.toUpperCase().includes('HISTORIA'));
                 const telKey = Object.keys(row).find(k => k.toUpperCase().includes('TELEFONO'));
                 const dni = (row[dniKey] || '').toString().trim();
                 const hcl = (row[hclKey] || '').toString().trim();
-                const telefono = (row[telKey] || '').toString().trim();
+                const tel = (row[telKey] || '').toString().trim();
+                
                 const dirKey = Object.keys(row).find(k => k.toUpperCase().includes('DIRECCION'));
                 const distKey = Object.keys(row).find(k => k.toUpperCase().includes('DISTRITO'));
                 const provKey = Object.keys(row).find(k => k.toUpperCase().includes('PROVINCIA'));
                 const direccionCompleta = [row[dirKey], row[distKey], row[provKey]].filter(Boolean).join(' - ');
+
                 const gestKey = Object.keys(row).find(k => k.toUpperCase().includes('GESTANTE'));
                 const gestVal = row[gestKey];
                 const esGestante = !!gestVal;
 
                 const payload = {
-                  nombre: nombre,
-                  apellido: apellido,
-                  tipo_documento: 'DNI',
-                  dni: dni,
+                  nombre, apellido, tipo_documento: 'DNI', dni,
                   HistoriaClinica: hcl ? (hcl.startsWith('H-') ? hcl : `H-${hcl}`) : '',
-                  telefono: telefono,
-                  email: '',
+                  telefono: tel, email: '',
                   direccion: direccionCompleta || 'No especificada',
-                  gestante: esGestante,
-                  etapa_vida: esGestante ? 'Gestante' : 'Adulto',
+                  gestante: esGestante, etapa_vida: esGestante ? 'Gestante' : 'Adulto',
                   detalle_gestante: esGestante ? (gestVal.toString().substring(0, 10)) : ''
                 };
 
-                if (dni || fullName) {
-                  try {
-                    await createPaciente(payload);
-                    successCount++;
-                  } catch (err) {
-                    errorCount++;
-                  }
-                } else {
-                  errorCount++;
-                }
+                try {
+                  await createPaciente(payload);
+                  successCount++;
+                } catch (err) { errorCount++; }
               });
 
               await Promise.all(promises);
-
-              // Actualizar progreso cada lote para mayor fluidez
+              
               const progressB = Swal.getHtmlContainer()?.querySelector('b');
-              if (progressB) progressB.textContent = Math.min(i + CHUNK_SIZE, data.length);
+              if (progressB) progressB.textContent = Math.min(i + CHUNK_SIZE, toImport.length);
             }
 
             queryClient.invalidateQueries(['pacientes']);
             Swal.fire({
-              icon: successCount > 0 ? 'success' : 'error',
-              title: 'Importación finalizada',
-              text: `Éxito: ${successCount}, Errores/Duplicados: ${errorCount}`,
+              icon: 'success',
+              title: 'Importación terminada',
+              html: `<b>Nuevos registrados:</b> ${successCount}<br/>` +
+                    `<b>Ya existían (omitidos):</b> ${skippedCount}<br/>` +
+                    `<b>Errores técnicos:</b> ${errorCount}`,
               heightAuto: false
             });
           }

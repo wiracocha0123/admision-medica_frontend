@@ -9,7 +9,7 @@ import {
 import { 
   Edit as EditIcon, Delete as DeleteIcon, Visibility as ViewIcon, 
   Add as AddIcon, Refresh as RefreshIcon, Search as SearchIcon,
-  FilterList as FilterIcon
+  FilterList as FilterIcon, CalendarToday as CalendarTodayIcon
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getPersonalSalud, deletePersonalSalud, updatePersonalSalud, createPersonalSalud } from '../../services/personalService';
@@ -17,6 +17,7 @@ import { getEspecialidades } from '../../services/especialidadesService';
 import { AuthContext } from '../../contexts/AuthContext';
 import HorarioSemanalDisplay from '../../components/HorarioSemanalDisplay';
 import HorarioSemanalPicker from '../../components/HorarioSemanalPicker';
+import HorarioMensualPicker from '../../components/HorarioMensualPicker';
 import Swal from 'sweetalert2';
 
 export default function Personal() {
@@ -42,7 +43,8 @@ export default function Personal() {
     telefono: '',
     email: '',
     especialidad_id: '',
-    horario_semanal: {}
+    horario_semanal: {},
+    horario_mensual: []
   });
 
   const { data, isLoading, error } = useQuery({
@@ -149,6 +151,11 @@ export default function Personal() {
         normalizedHorario = normalizedHorario[0] || {};
       }
 
+      let normalizedMensual = item.horario_mensual;
+      if (typeof normalizedMensual === 'string') {
+        try { normalizedMensual = JSON.parse(normalizedMensual); } catch (e) { normalizedMensual = []; }
+      }
+
       setFormData({
         id: item.id,
         nombres: item.nombres || '',
@@ -157,7 +164,8 @@ export default function Personal() {
         telefono: item.telefono || '',
         email: item.email || '',
         especialidad_id: item.especialidad_id || '',
-        horario_semanal: normalizedHorario || {}
+        horario_semanal: normalizedHorario || {},
+        horario_mensual: Array.isArray(normalizedMensual) ? normalizedMensual : []
       });
     } else {
       setFormData({
@@ -167,7 +175,8 @@ export default function Personal() {
         telefono: '',
         email: '',
         especialidad_id: '',
-        horario_semanal: {}
+        horario_semanal: {},
+        horario_mensual: []
       });
     }
     setEditDialogOpen(true);
@@ -218,8 +227,8 @@ export default function Personal() {
 
     const payload = {
       ...formData,
-      // Quitamos cualquier procesamiento extra y enviamos el array limpio
-      horario_semanal: horarioFinal
+      horario_semanal: horarioFinal,
+      horario_mensual: formData.horario_mensual
     };
     
     saveMutation.mutate(payload);
@@ -401,7 +410,19 @@ export default function Personal() {
                    <TableCell>{p.email || '-'}</TableCell>
                    <TableCell><Chip label={p.especialidad?.UPS || 'Sin asignar'} size="small" /></TableCell>
                    <TableCell>
-                      <HorarioSemanalDisplay horario={p.horario_semanal} />
+                      <Stack spacing={1}>
+                        <HorarioSemanalDisplay horario={p.horario_semanal} />
+                        {p.horario_mensual && Array.isArray(p.horario_mensual) && p.horario_mensual.length > 0 && (
+                          <Chip 
+                            label="Mes Programado" 
+                            size="small" 
+                            color="success" 
+                            variant="outlined" 
+                            icon={<CalendarTodayIcon sx={{ fontSize: '0.8rem !important' }} />}
+                            sx={{ height: 20, fontSize: '0.65rem' }}
+                          />
+                        )}
+                      </Stack>
                    </TableCell>
                    <TableCell align="right">
                       <Stack direction="row" spacing={0.5} sx={{ justifyContent: "flex-end" }}>
@@ -464,6 +485,38 @@ export default function Personal() {
                 <Box sx={{ width: '100%' }}>
                   <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Horario Semanal</Typography>
                   <HorarioSemanalDisplay horario={selectedItem.horario_semanal} />
+                </Box>
+              </ListItem>
+              <Divider />
+              <ListItem>
+                <Box sx={{ width: '100%' }}>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Programación Mensual</Typography>
+                  {selectedItem.horario_mensual && Array.isArray(selectedItem.horario_mensual) && selectedItem.horario_mensual.length > 0 ? (
+                    <Box sx={{ maxHeight: 200, overflowY: 'auto', p: 1, border: '1px solid #eee', borderRadius: 1 }}>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell size="small">Día</TableCell>
+                            <TableCell size="small">Mañana</TableCell>
+                            <TableCell size="small">Tarde</TableCell>
+                            <TableCell size="small">Noche</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {selectedItem.horario_mensual.map((d, index) => (
+                            <TableRow key={index}>
+                              <TableCell size="small">{d.dia}</TableCell>
+                              <TableCell size="small">{d.manana || '-'}</TableCell>
+                              <TableCell size="small">{d.tarde || '-'}</TableCell>
+                              <TableCell size="small">{d.noche || '-'}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </Box>
+                  ) : (
+                    <Typography variant="caption" color="text.secondary">No hay programación mensual registrada.</Typography>
+                  )}
                 </Box>
               </ListItem>
             </List>
@@ -530,13 +583,13 @@ export default function Personal() {
               />
 
               <Divider sx={{ my: 1 }}>
-                <Chip label="HORARIO SEMANAL" size="small" />
+                <Chip label="PROGRAMACIÓN MENSUAL" size="small" color="primary" />
               </Divider>
 
-              <Box sx={{ p: 2, border: '1px solid #e0e0e0', borderRadius: 1, bgcolor: '#fcfcfc' }}>
-                <HorarioSemanalPicker 
-                  value={formData.horario_semanal} 
-                  onChange={(newHorario) => setFormData({...formData, horario_semanal: newHorario})} 
+              <Box sx={{ p: 1, border: '1px solid #e0e0e0', borderRadius: 1, bgcolor: '#fcfcfc' }}>
+                <HorarioMensualPicker 
+                  value={formData.horario_mensual} 
+                  onChange={(newHorario) => setFormData({...formData, horario_mensual: newHorario})} 
                 />
               </Box>
             </Stack>

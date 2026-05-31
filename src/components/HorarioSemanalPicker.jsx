@@ -62,7 +62,10 @@ export default function HorarioSemanalPicker({ value, onChange, disabled = false
     }
 
     if (isChecked) {
-      newValue[dia][turno] = "08:00-14:00"; 
+      let defaultTime = "08:00-14:00";
+      if (turno === "Tarde") defaultTime = "14:00-20:00";
+      if (turno === "Noche") defaultTime = "20:00-08:00";
+      newValue[dia][turno] = defaultTime; 
     } else {
       delete newValue[dia][turno];
     }

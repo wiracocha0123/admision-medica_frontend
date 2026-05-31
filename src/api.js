@@ -39,7 +39,15 @@ api.interceptors.response.use(
     if (status === 401 && !isLoginReq && !isRefreshReq && !originalRequest._retry) {
       originalRequest._retry = true;
       try {
-        const r = await axios.post(`${API_URL}/refresh`, {}, { headers: { Accept: 'application/json' } });
+        const token = _readStoredToken();
+        if (!token) throw new Error('No token available');
+        
+        const r = await axios.post(`${API_URL}/refresh`, {}, { 
+          headers: { 
+            Accept: 'application/json',
+            Authorization: `Bearer ${token}`
+          } 
+        });
         const newToken = r?.data?.access_token;
         if (newToken) {
           setToken(newToken, true);
@@ -47,14 +55,17 @@ api.interceptors.response.use(
           return api(originalRequest);
         }
       } catch (refreshErr) {
-        // fall through
+        console.error("Refresh token failed:", refreshErr);
+        clearToken();
+        // Evitar que el loop continúe si estamos en una página protegida
+        window.location.href = '/login'; 
+        return Promise.reject(refreshErr);
       }
-      clearToken();
-      return Promise.reject(error);
     }
 
     if (status === 401) {
       clearToken();
+      if (!isLoginReq) window.location.href = '/login';
     }
 
     return Promise.reject(error);

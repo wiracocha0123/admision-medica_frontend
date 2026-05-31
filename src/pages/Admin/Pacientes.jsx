@@ -8,12 +8,14 @@ import {
 } from '@mui/material';
 import { 
   Edit as EditIcon, Delete as DeleteIcon, Add as AddIcon, Refresh as RefreshIcon,
-  People as PeopleIcon, Search as SearchIcon, FilterList as FilterIcon
+  People as PeopleIcon, Search as SearchIcon, FilterList as FilterIcon,
+  FileUpload as ImportIcon
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getPacientes, createPaciente, updatePaciente, deletePaciente, getNextHC } from '../../services/pacientesService';
 import { AuthContext } from '../../contexts/AuthContext';
 import Swal from 'sweetalert2';
+import * as XLSX from 'xlsx';
 
 export default function Pacientes() {
   const { user } = useContext(AuthContext);
@@ -300,6 +302,140 @@ export default function Pacientes() {
     saveMutation.mutate(formData);
   };
 
+  const handleImportExcel = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws);
+
+        if (data.length === 0) {
+          Swal.fire({ icon: 'error', title: 'Error', text: 'El archivo está vacío', heightAuto: false });
+          return;
+        }
+
+        Swal.fire({
+          title: 'Procesando archivo...',
+          text: `Se han detectado ${data.length} registros. ¿Desea importarlos?`,
+          icon: 'question',
+          showCancelButton: true,
+          confirmButtonText: 'Sí, importar',
+          cancelButtonText: 'Cancelar',
+          heightAuto: false
+        }).then(async (result) => {
+          if (result.isConfirmed) {
+            Swal.fire({
+              title: 'Importando...',
+              html: 'Progreso: <b>0</b> / ' + data.length,
+              allowOutsideClick: false,
+              didOpen: () => {
+                Swal.showLoading();
+              },
+              heightAuto: false
+            });
+
+            let successCount = 0;
+            let errorCount = 0;
+            const CHUNK_SIZE = 10; // Procesar de 10 en 10 para no saturar el servidor
+
+            for (let i = 0; i < data.length; i += CHUNK_SIZE) {
+              const chunk = data.slice(i, i + CHUNK_SIZE);
+              
+              const promises = chunk.map(async (row) => {
+                // 1. Lógica de nombres y apellidos
+                const fullNameKey = Object.keys(row).find(k => k.toUpperCase().includes('NOMBRE'));
+                const fullName = (row[fullNameKey] || '').toString().trim();
+                const words = fullName.split(/\s+/).filter(Boolean);
+                
+                let apellido = '';
+                let nombre = '';
+                if (words.length === 0) {
+                  apellido = 'DESCONOCIDO';
+                  nombre = 'PACIENTE';
+                } else if (words.length === 1) {
+                  apellido = words[0];
+                  nombre = '-';
+                } else if (words.length === 2) {
+                  apellido = words[0];
+                  nombre = words[1];
+                } else {
+                  apellido = words[0] + ' ' + words[1];
+                  nombre = words.slice(2).join(' ');
+                }
+
+                // 2. Mapeo de campos
+                const dniKey = Object.keys(row).find(k => k.toUpperCase() === 'DNI');
+                const hclKey = Object.keys(row).find(k => k.toUpperCase().includes('HCL') || k.toUpperCase().includes('HISTORIA'));
+                const telKey = Object.keys(row).find(k => k.toUpperCase().includes('TELEFONO'));
+                const dni = (row[dniKey] || '').toString().trim();
+                const hcl = (row[hclKey] || '').toString().trim();
+                const telefono = (row[telKey] || '').toString().trim();
+                const dirKey = Object.keys(row).find(k => k.toUpperCase().includes('DIRECCION'));
+                const distKey = Object.keys(row).find(k => k.toUpperCase().includes('DISTRITO'));
+                const provKey = Object.keys(row).find(k => k.toUpperCase().includes('PROVINCIA'));
+                const direccionCompleta = [row[dirKey], row[distKey], row[provKey]].filter(Boolean).join(' - ');
+                const gestKey = Object.keys(row).find(k => k.toUpperCase().includes('GESTANTE'));
+                const gestVal = row[gestKey];
+                const esGestante = !!gestVal;
+
+                const payload = {
+                  nombre: nombre,
+                  apellido: apellido,
+                  tipo_documento: 'DNI',
+                  dni: dni,
+                  HistoriaClinica: hcl ? (hcl.startsWith('H-') ? hcl : `H-${hcl}`) : '',
+                  telefono: telefono,
+                  email: '',
+                  direccion: direccionCompleta || 'No especificada',
+                  gestante: esGestante,
+                  etapa_vida: esGestante ? 'Gestante' : 'Adulto',
+                  detalle_gestante: esGestante ? (gestVal.toString().substring(0, 10)) : ''
+                };
+
+                if (dni || fullName) {
+                  try {
+                    await createPaciente(payload);
+                    successCount++;
+                  } catch (err) {
+                    errorCount++;
+                  }
+                } else {
+                  errorCount++;
+                }
+              });
+
+              await Promise.all(promises);
+
+              // Actualizar progreso cada lote para mayor fluidez
+              const progressB = Swal.getHtmlContainer()?.querySelector('b');
+              if (progressB) progressB.textContent = Math.min(i + CHUNK_SIZE, data.length);
+            }
+
+            queryClient.invalidateQueries(['pacientes']);
+            Swal.fire({
+              icon: successCount > 0 ? 'success' : 'error',
+              title: 'Importación finalizada',
+              text: `Éxito: ${successCount}, Errores/Duplicados: ${errorCount}`,
+              heightAuto: false
+            });
+          }
+        });
+
+      } catch (err) {
+        console.error(err);
+        Swal.fire({ icon: 'error', title: 'Error', text: 'No se pudo leer el archivo Excel', heightAuto: false });
+      }
+    };
+    reader.readAsBinaryString(file);
+    e.target.value = null;
+  };
+
   const handleOpenDeleteConfirm = (id) => {
     Swal.fire({
       title: '¿Estás seguro?',
@@ -325,8 +461,23 @@ export default function Pacientes() {
           <PeopleIcon sx={{ fontSize: 40 }} />
           Pacientes
         </Typography>
-        <Stack direction="row" spacing={2}>
-          <Button 
+        <Stack direction="row" spacing={2}>          <input
+            type="file"
+            accept=".xlsx, .xls, .csv"
+            style={{ display: 'none' }}
+            id="import-excel-input"
+            onChange={handleImportExcel}
+          />
+          <label htmlFor="import-excel-input">
+            <Button 
+              variant="outlined" 
+              component="span"
+              startIcon={<ImportIcon />}
+              color="success"
+            >
+              Importar Excel
+            </Button>
+          </label>          <Button 
             variant="outlined" 
             startIcon={<RefreshIcon />} 
             onClick={() => queryClient.invalidateQueries(['pacientes'])}

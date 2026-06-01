@@ -102,6 +102,8 @@ export default function Personal() {
       queryClient.invalidateQueries(['personal']);
       setEditDialogOpen(false);
       
+      console.log("Respuesta del servidor al guardar:", data);
+
       Swal.fire({
         icon: 'success',
         title: variables.id ? '¡Actualizado!' : '¡Registrado!',
@@ -112,8 +114,14 @@ export default function Personal() {
       });
     },
     onError: (err) => {
+      console.error("Error completo al guardar:", err);
       let msg = err.response?.data?.message || err.message;
+      let detailedError = "";
       
+      if (err.response?.data?.errors) {
+        detailedError = Object.values(err.response.data.errors).flat().join('\n');
+      }
+
       if (msg.includes('dni has already been taken')) {
         msg = 'Ya existe personal registrado con este DNI.';
       } else if (msg.includes('email has already been taken')) {
@@ -124,6 +132,7 @@ export default function Personal() {
         icon: 'error',
         title: 'Error al guardar',
         text: msg,
+        footer: detailedError ? `<pre style="font-size: 10px; text-align: left;">${detailedError}</pre>` : null,
         confirmButtonColor: '#3085d6',
         heightAuto: false
       });
@@ -131,30 +140,64 @@ export default function Personal() {
   });
 
   const handleOpenView = (item) => {
-    setSelectedItem(item);
+    // Normalizar el horario mensual antes de mostrarlo en el modal de detalles
+    let normalizedMensual = item.horario_mensual;
+    if (typeof normalizedMensual === 'string') {
+      try { normalizedMensual = JSON.parse(normalizedMensual); } catch (e) { normalizedMensual = []; }
+    }
+    
+    // Si viene en el formato [{lunes:..., martes:...}], es un error de guardado previo o formato semanal
+    // Intentamos detectar si es el formato de 31 días (array largo)
+    let finalMensual = [];
+    if (Array.isArray(normalizedMensual)) {
+      if (normalizedMensual.length === 1 && normalizedMensual[0].lunes) {
+        // Es formato semanal guardado en mensual, no lo mostramos como mensual
+        finalMensual = [];
+      } else {
+        finalMensual = normalizedMensual;
+      }
+    }
+
+    // Asegurar que use los nombres de campos del backend para la vista también
+    const mappedMensual = finalMensual.map(d => ({
+      dia_numero: d.dia_numero || d.dia,
+      turno_m: d.turno_m || d.manana,
+      turno_t: d.turno_t || d.tarde,
+      turno_n: d.turno_n || d.noche
+    }));
+
+    setSelectedItem({
+      ...item,
+      horario_mensual: mappedMensual
+    });
     setViewDialogOpen(true);
   };
 
   const handleOpenEdit = (item = null) => {
     if (item) {
+      console.log("Editando item:", item);
       // Normalizar el horario desde el item
       let normalizedHorario = item.horario_semanal;
-      if (typeof normalizedHorario === 'string') {
-        try {
-          normalizedHorario = JSON.parse(normalizedHorario);
-        } catch (e) {
-          normalizedHorario = {};
-        }
+      if (typeof normalizedHorario === 'string' && normalizedHorario) {
+        try { normalizedHorario = JSON.parse(normalizedHorario); } catch (e) { normalizedHorario = {}; }
       }
-      // Si es el formato [ { ... } ], extraer el objeto
       if (Array.isArray(normalizedHorario)) {
         normalizedHorario = normalizedHorario[0] || {};
       }
 
       let normalizedMensual = item.horario_mensual;
-      if (typeof normalizedMensual === 'string') {
+      if (typeof normalizedMensual === 'string' && normalizedMensual) {
         try { normalizedMensual = JSON.parse(normalizedMensual); } catch (e) { normalizedMensual = []; }
       }
+      
+      const cleanMensual = Array.isArray(normalizedMensual) 
+        ? normalizedMensual.map((d, idx) => ({
+            dia_numero: d.dia_numero || d.dia || (idx + 1),
+            turno_m: d.turno_m || d.manana || '',
+            turno_t: d.turno_t || d.tarde || '',
+            turno_n: d.turno_n || d.noche || ''
+          }))
+        : [];
 
       setFormData({
         id: item.id,
@@ -165,7 +208,7 @@ export default function Personal() {
         email: item.email || '',
         especialidad_id: item.especialidad_id || '',
         horario_semanal: normalizedHorario || {},
-        horario_mensual: Array.isArray(normalizedMensual) ? normalizedMensual : []
+        horario_mensual: cleanMensual
       });
     } else {
       setFormData({
@@ -219,18 +262,20 @@ export default function Personal() {
       return;
     }
     
-    // Intentamos enviar el horario como un objeto puro si el backend lo procesa vía JSON
-    // Si esto falla con "Array to string conversion", el backend NECESITA el cast en el modelo.
-    const horarioFinal = Array.isArray(formData.horario_semanal) 
-      ? formData.horario_semanal 
-      : [formData.horario_semanal];
-
+    // Enviamos el payload. 
+    // Si el backend no persiste, VERIFICAR:
+    // 1. Que 'horario_mensual' esté en el $fillable del modelo PersonalSalud.php
+    // 2. Que el campo en la DB sea tipo TEXT o JSON (no VARCHAR 255)
     const payload = {
       ...formData,
-      horario_semanal: horarioFinal,
-      horario_mensual: formData.horario_mensual
+      // Si el horario semanal está vacío ({}), enviamos [] o lo que el backend espere
+      horario_semanal: (formData.horario_semanal && Object.keys(formData.horario_semanal).length > 0)
+        ? [formData.horario_semanal]
+        : [],
+      horario_mensual: formData.horario_mensual || []
     };
-    
+
+    console.log("Payload Final Enviado:", payload);
     saveMutation.mutate(payload);
   };
 
@@ -410,7 +455,7 @@ export default function Personal() {
                    <TableCell><Chip label={p.especialidad?.UPS || 'Sin asignar'} size="small" /></TableCell>
                    <TableCell>
                       <Stack spacing={1}>
-                        {p.horario_mensual && Array.isArray(p.horario_mensual) && p.horario_mensual.length > 0 ? (
+                        {p.horario_mensual && (Array.isArray(p.horario_mensual) ? p.horario_mensual.length > 0 : String(p.horario_mensual).length > 2) ? (
                           <Button 
                             size="small" 
                             variant="outlined" 
@@ -504,15 +549,23 @@ export default function Personal() {
                         <TableBody>
                           {selectedItem.horario_mensual.map((d, index) => (
                             <TableRow key={index} hover>
-                              <TableCell size="small" sx={{ fontWeight: 'medium' }}>Día {d.dia}</TableCell>
-                              <TableCell size="small">
-                                <Chip label={d.manana || '-'} size="small" variant={d.manana ? "filled" : "outlined"} color={d.manana ? "primary" : "default"} sx={{ minWidth: 40, height: 20, fontSize: '0.65rem' }} />
+                              <TableCell size="small" sx={{ fontWeight: 'medium' }}>
+                                Día {d.dia_numero}
                               </TableCell>
                               <TableCell size="small">
-                                <Chip label={d.tarde || '-'} size="small" variant={d.tarde ? "filled" : "outlined"} color={d.tarde ? "secondary" : "default"} sx={{ minWidth: 40, height: 20, fontSize: '0.65rem' }} />
+                                {d.turno_m ? (
+                                  <Chip label={d.turno_m} size="small" color="primary" sx={{ minWidth: 40, height: 20, fontSize: '0.65rem' }} />
+                                ) : '-'}
                               </TableCell>
                               <TableCell size="small">
-                                <Chip label={d.noche || '-'} size="small" variant={d.noche ? "filled" : "outlined"} color={d.noche ? "warning" : "default"} sx={{ minWidth: 40, height: 20, fontSize: '0.65rem' }} />
+                                {d.turno_t ? (
+                                  <Chip label={d.turno_t} size="small" color="secondary" sx={{ minWidth: 40, height: 20, fontSize: '0.65rem' }} />
+                                ) : '-'}
+                              </TableCell>
+                              <TableCell size="small">
+                                {d.turno_n ? (
+                                  <Chip label={d.turno_n} size="small" color="warning" sx={{ minWidth: 40, height: 20, fontSize: '0.65rem' }} />
+                                ) : '-'}
                               </TableCell>
                             </TableRow>
                           ))}

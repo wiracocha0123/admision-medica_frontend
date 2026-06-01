@@ -24,10 +24,10 @@ export default function HorarioMensualPicker({ value, onChange }) {
   useEffect(() => {
     if (!Array.isArray(value) || value.length !== diasDelMes.length) {
       const initialHorario = diasDelMes.map((date) => ({
-        dia: getDate(date),
-        manana: '',
-        tarde: '',
-        noche: ''
+        dia_numero: getDate(date),
+        turno_m: '',
+        turno_t: '',
+        turno_n: ''
       }));
       onChange(initialHorario);
     }
@@ -36,17 +36,33 @@ export default function HorarioMensualPicker({ value, onChange }) {
   const handleInputChange = (index, field, newValue) => {
     const updatedHorario = [...value];
     if (!updatedHorario[index]) {
-        updatedHorario[index] = { dia: index + 1, manana: '', tarde: '', noche: '' };
+        updatedHorario[index] = { 
+          dia_numero: index + 1, 
+          turno_m: '', 
+          turno_t: '', 
+          turno_n: '' 
+        };
     }
+    
+    // Mapear el nombre del campo interno al que espera el backend
+    let backendField = field;
+    if (field === 'manana') backendField = 'turno_m';
+    if (field === 'tarde') backendField = 'turno_t';
+    if (field === 'noche') backendField = 'turno_n';
+
     updatedHorario[index] = {
       ...updatedHorario[index],
-      [field]: newValue.toUpperCase() // Códigos suelen ser en mayúsculas
+      [backendField]: newValue.toUpperCase()
     };
     onChange(updatedHorario);
   };
 
   const getFieldValue = (index, field) => {
     if (Array.isArray(value) && value[index]) {
+      // Intentar ambos nombres por compatibilidad
+      if (field === 'manana') return value[index].turno_m || value[index].manana || '';
+      if (field === 'tarde') return value[index].turno_t || value[index].tarde || '';
+      if (field === 'noche') return value[index].turno_n || value[index].noche || '';
       return value[index][field] || '';
     }
     return '';
@@ -83,7 +99,11 @@ export default function HorarioMensualPicker({ value, onChange }) {
                     value={getFieldValue(index, 'manana')}
                     onChange={(e) => handleInputChange(index, 'manana', e.target.value)}
                     fullWidth
-                    inputProps={{ style: { textTransform: 'uppercase', textAlign: 'center' } }}
+                    slotProps={{
+                      htmlInput: { 
+                        style: { textTransform: 'uppercase', textAlign: 'center' } 
+                      }
+                    }}
                   />
                 </TableCell>
                 <TableCell>
@@ -93,7 +113,11 @@ export default function HorarioMensualPicker({ value, onChange }) {
                     value={getFieldValue(index, 'tarde')}
                     onChange={(e) => handleInputChange(index, 'tarde', e.target.value)}
                     fullWidth
-                    inputProps={{ style: { textTransform: 'uppercase', textAlign: 'center' } }}
+                    slotProps={{
+                      htmlInput: { 
+                        style: { textTransform: 'uppercase', textAlign: 'center' } 
+                      }
+                    }}
                   />
                 </TableCell>
                 <TableCell>
@@ -103,7 +127,11 @@ export default function HorarioMensualPicker({ value, onChange }) {
                     value={getFieldValue(index, 'noche')}
                     onChange={(e) => handleInputChange(index, 'noche', e.target.value)}
                     fullWidth
-                    inputProps={{ style: { textTransform: 'uppercase', textAlign: 'center' } }}
+                    slotProps={{
+                      htmlInput: { 
+                        style: { textTransform: 'uppercase', textAlign: 'center' } 
+                      }
+                    }}
                   />
                 </TableCell>
               </TableRow>

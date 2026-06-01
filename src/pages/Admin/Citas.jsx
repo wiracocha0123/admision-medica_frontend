@@ -31,10 +31,21 @@ export default function Citas() {
   const [viewMode, setViewMode] = useState(false); 
   const [selectedCita, setSelectedCita] = useState(null);
 
+  // Usar una función para obtener hoy en formato Local de Perú/Sistema para evitar saltos de día por UTC
+  const getTodayStr = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const hoyStr = getTodayStr();
+
   // Estados para búsqueda y filtros
   const [searchTerm, setSearchTerm] = useState("");
   const [filterEstado, setFilterEstado] = useState("todos");
-  const [filterFecha, setFilterFecha] = useState("");
+  const [filterFecha, setFilterFecha] = useState(hoyStr); // Filtrar por hoy por defecto
   const [filterEspecialidad, setFilterEspecialidad] = useState("todas");
 
   const [formData, setFormData] = useState({
@@ -50,17 +61,6 @@ export default function Citas() {
   });
 
   const [globalTotalTickets, setGlobalTotalTickets] = useState(16);
-  
-  // Usar una función para obtener hoy en formato Local de Perú/Sistema para evitar saltos de día por UTC
-  const getTodayStr = () => {
-    const d = new Date();
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
-  const hoyStr = getTodayStr();
 
   // 1. Obtener última capacidad configurada para hoy (para persistencia)
   const { data: initialCapacidad } = useQuery({
@@ -106,8 +106,8 @@ export default function Citas() {
   const isLocked = hasCitasHoyServer || false;
 
   const { data: citasData, isLoading, error, refetch, isFetching } = useQuery({
-    queryKey: ["citas", currentPage],
-    queryFn: () => getCitas(currentPage),
+    queryKey: ["citas", currentPage, filterFecha],
+    queryFn: () => getCitas(currentPage, filterFecha),
     enabled: !!user,
   });
 
@@ -717,7 +717,7 @@ export default function Citas() {
               onClick={() => { 
                 setSearchTerm(""); 
                 setFilterEstado("todos"); 
-                setFilterFecha(""); 
+                setFilterFecha(hoyStr); 
                 setFilterEspecialidad("todas");
                 setCurrentPage(1);
               }}

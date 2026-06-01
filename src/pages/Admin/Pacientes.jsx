@@ -9,7 +9,7 @@ import {
 import { 
   Edit as EditIcon, Delete as DeleteIcon, Add as AddIcon, Refresh as RefreshIcon,
   People as PeopleIcon, Search as SearchIcon, FilterList as FilterIcon,
-  FileUpload as ImportIcon
+  FileUpload as ImportIcon, Archive as ArchiveIcon, History as HistoryIcon
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getPacientes, createPaciente, updatePaciente, deletePaciente, getNextHC, getAllPacientes } from '../../services/pacientesService';
@@ -26,6 +26,7 @@ export default function Pacientes() {
   const [filterText, setFilterText] = useState('');
   const [filterHC, setFilterHC] = useState('');
   const [filterGestante, setFilterGestante] = useState('all');
+  const [filterEstado, setFilterEstado] = useState('Activo'); // Nuevo filtro de estado por defecto en Activo
 
   // Estados para modales
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -58,8 +59,8 @@ export default function Pacientes() {
   }, [formData.etapa_vida]);
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['pacientes', page, filterText, filterHC, filterGestante],
-    queryFn: () => getPacientes(page, filterText, filterHC, filterGestante),
+    queryKey: ['pacientes', page, filterText, filterHC, filterGestante, filterEstado],
+    queryFn: () => getPacientes(page, filterText, filterHC, filterGestante, filterEstado),
     enabled: !!user,
   });
 
@@ -83,8 +84,14 @@ export default function Pacientes() {
       filterGestante === 'all' || 
       (filterGestante === 'yes' && isGestante) || 
       (filterGestante === 'no' && !isGestante);
+    
+    // Filtro por estado
+    const matchesEstado = 
+      filterEstado === 'todos' || 
+      (filterEstado === 'Activo' && (p.estado === 'Activo' || !p.estado)) || 
+      (p.estado === filterEstado);
       
-    return matchesText && matchesHC && matchesGestante;
+    return matchesText && matchesHC && matchesGestante && matchesEstado;
   });
 
   const items = [...filteredItems].sort((a, b) => (b.id || 0) - (a.id || 0));
@@ -192,7 +199,8 @@ export default function Pacientes() {
         direccion: item.direccion || '',
         gestante: !!item.gestante,
         etapa_vida: item.etapa_vida || 'Adulto',
-        detalle_gestante: item.detalle_gestante || ''
+        detalle_gestante: item.detalle_gestante || '',
+        estado: item.estado || 'Activo'
       });
     } else {
       setFormData({
@@ -206,30 +214,33 @@ export default function Pacientes() {
         direccion: '',
         gestante: false,
         etapa_vida: 'Adulto',
-        detalle_gestante: ''
+        detalle_gestante: '',
+        estado: 'Activo'
       });
     }
     setEditDialogOpen(true);
   };
 
-  const handleOpenCreate = async () => {
+  const handleOpenCreate = async (manualHC = null) => {
     setFormData({
       nombre: '',
       apellido: '',
       tipo_documento: 'DNI',
       dni: '',
-      HistoriaClinica: 'Cargando...',
+      HistoriaClinica: manualHC || 'Cargando...',
       telefono: '',
       email: '',
       direccion: '',
       gestante: false,
       etapa_vida: 'Adulto',
-      detalle_gestante: ''
+      detalle_gestante: '',
+      estado: 'Activo'
     });
     setEditDialogOpen(true);
 
+    if (manualHC) return; // Si ya pasamos una HC (manual o liberada), no buscamos otra
+
     try {
-      // Usar directamente el servicio importado en lugar de 'api'
       const resp = await getNextHC();
       console.log("Respuesta completa del servicio:", resp);
       
@@ -479,6 +490,48 @@ export default function Pacientes() {
     });
   };
 
+  const handleArchiveAndReleaseHC = (paciente) => {
+    const originalHC = paciente.HistoriaClinica;
+
+    Swal.fire({
+      title: `Liberar HC: ${originalHC}`,
+      html: `¿Qué acción desea realizar con <b>${paciente.nombre} ${paciente.apellido}</b>?<br/><br/>` +
+            `• Se archivará como: <b>${originalHC}-OLD</b><br/>` +
+            `• El número <b>${originalHC}</b> quedará libre.`,
+      icon: 'warning',
+      showCancelButton: true,
+      showDenyButton: true,
+      confirmButtonColor: '#ff9800', // Naranja para Solo Liberar
+      denyButtonColor: '#3085d6',    // Azul para Liberar y Crear
+      cancelButtonColor: '#d33',
+      confirmButtonText: 'Solo Liberar HC',
+      denyButtonText: 'Liberar y Asignar a Nuevo',
+      cancelButtonText: 'Cancelar',
+      heightAuto: false
+    }).then((result) => {
+      if (result.isConfirmed || result.isDenied) {
+        const payload = {
+          ...paciente,
+          HistoriaClinica: `${originalHC}-OLD`,
+          estado: 'Archivado'
+        };
+
+        const isAssigningNew = result.isDenied;
+
+        saveMutation.mutate(payload, {
+          onSuccess: () => {
+            if (isAssigningNew) {
+              // Pequeña espera para que cierre el modal anterior si fuera necesario
+              setTimeout(() => {
+                handleOpenCreate(originalHC);
+              }, 500);
+            }
+          }
+        });
+      }
+    });
+  };
+
   return (
     <Paper sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -593,6 +646,24 @@ export default function Pacientes() {
               <MenuItem value="no">No Gestantes</MenuItem>
             </TextField>
           </Grid>
+          <Grid size={{ xs: 12, md: 3 }}>
+            <TextField
+              select
+              fullWidth
+              size="small"
+              label="Estado"
+              value={filterEstado}
+              onChange={(e) => {
+                setFilterEstado(e.target.value);
+                setPage(1);
+              }}
+              sx={{ bgcolor: 'white' }}
+            >
+              <MenuItem value="Activo">Solo Activos</MenuItem>
+              <MenuItem value="Archivado">Archivados / Quitados</MenuItem>
+              <MenuItem value="todos">Ver Todos</MenuItem>
+            </TextField>
+          </Grid>
           <Grid size={{ xs: 12, md: 2 }}>
             <Button 
               fullWidth 
@@ -601,6 +672,7 @@ export default function Pacientes() {
                 setFilterText(''); 
                 setFilterGestante('all'); 
                 setFilterHC(''); 
+                setFilterEstado('Activo');
                 setPage(1); 
               }}
               sx={{ textTransform: 'none' }}
@@ -652,34 +724,54 @@ export default function Pacientes() {
                  </TableCell>
                  <TableCell>{p.HistoriaClinica || '-'}</TableCell>
                  <TableCell>
-                    <Chip 
-                      label={p.etapa_vida || 'Adulto'} 
-                      size="small" 
-                      variant="outlined" 
-                      color="primary"
-                      sx={{ fontSize: '0.75rem' }}
-                    />
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                      <Chip 
+                        label={p.etapa_vida || 'Adulto'} 
+                        size="small" 
+                        variant="outlined" 
+                        color="primary"
+                        sx={{ fontSize: '0.75rem', width: 'fit-content' }}
+                      />
+                      {(p.gestante || p.etapa_vida === 'Gestante') && (
+                        <Tooltip title={p.detalle_gestante ? `Detalle: ${p.detalle_gestante}` : "Paciente gestante"}>
+                          <Typography 
+                            variant="caption" 
+                            sx={{ 
+                              color: 'secondary.main', 
+                              fontWeight: 'bold',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 0.5
+                            }}
+                          >
+                            • Gestante {p.detalle_gestante && `(${p.detalle_gestante})`}
+                          </Typography>
+                        </Tooltip>
+                      )}
+                    </Box>
                  </TableCell>
                  <TableCell>
                     <Typography variant="body2">{p.telefono || '-'}</Typography>
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{p.email || '-'}</Typography>
                  </TableCell>
                  <TableCell>
-                    {p.gestante && (
-                      <Tooltip title={p.detalle_gestante ? `Detalle: ${p.detalle_gestante}` : "Paciente gestante"}>
-                        <Box>
-                          <Chip label="Gestante" size="small" color="secondary" />
-                          {p.detalle_gestante && (
-                            <Typography variant="caption" sx={{ display: 'block', mt: 0.5, fontWeight: 'bold' }}>
-                              Nivel: {p.detalle_gestante}
-                            </Typography>
-                          )}
-                        </Box>
-                      </Tooltip>
-                    )}
+                    <Chip 
+                      label={p.estado || 'Activo'} 
+                      size="small" 
+                      color={p.estado === 'Archivado' ? 'default' : 'success'}
+                      variant={p.estado === 'Archivado' ? 'outlined' : 'filled'}
+                      sx={{ fontSize: '0.7rem', height: 20 }}
+                    />
                  </TableCell>
                  <TableCell align="right">
                     <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
+                      {(!p.estado || p.estado === 'Activo') && (
+                        <Tooltip title="Quitar y Liberar HC">
+                          <IconButton size="small" color="warning" onClick={() => handleArchiveAndReleaseHC(p)}>
+                            <HistoryIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
                       <Tooltip title="Editar">
                         <IconButton size="small" color="primary" onClick={() => handleOpenEdit(p)}>
                           <EditIcon fontSize="small" />
@@ -830,6 +922,19 @@ export default function Pacientes() {
                 value={formData.direccion} 
                 onChange={(e) => setFormData({...formData, direccion: e.target.value})} 
               />
+
+              {formData.id && (
+                <TextField
+                  select
+                  label="Estado"
+                  fullWidth
+                  value={formData.estado || 'Activo'}
+                  onChange={(e) => setFormData({...formData, estado: e.target.value})}
+                >
+                  <MenuItem value="Activo">Activo</MenuItem>
+                  <MenuItem value="Archivado">Archivado / Dado de Baja</MenuItem>
+                </TextField>
+              )}
             </Stack>
           </DialogContent>
           <DialogActions sx={{ p: 2 }}>

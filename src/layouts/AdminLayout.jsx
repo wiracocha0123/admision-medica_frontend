@@ -30,7 +30,8 @@ import {
   Logout as LogoutIcon,
   CalendarToday as CalendarIcon,
   LocalHospital as HealthIcon,
-  SupervisorAccount as OperatorIcon
+  SupervisorAccount as OperatorIcon,
+  PersonOff as PersonOffIcon
 } from '@mui/icons-material';
 import { AuthContext } from '../contexts/AuthContext';
 import logoImg from '../assets/logo.jpg';
@@ -185,6 +186,7 @@ export default function AdminLayout() {
     { text: 'Citas', icon: <CalendarIcon />, path: '/admin/citas', allowedRoles: ['operador', 'supervisor'] },
     { text: 'Personal de Salud', icon: <HealthIcon />, path: '/admin/personal', allowedRoles: ['operador', 'supervisor'] },
     { text: 'Pacientes', icon: <PeopleIcon />, path: '/admin/pacientes', allowedRoles: ['operador', 'supervisor'] },
+    { text: 'Archivados', icon: <PersonOffIcon />, path: '/admin/archivados', allowedRoles: ['operador', 'supervisor'] },
     { text: 'Reportes', icon: <InventoryIcon />, path: '/admin/reportes', allowedRoles: ['operador', 'supervisor'] },
     { text: 'Especialidades', icon: <CategoryIcon />, path: '/admin/especialidades', allowedRoles: ['supervisor'] },
     { text: 'Operadores', icon: <OperatorIcon />, path: '/admin/operadores', allowedRoles: ['supervisor'] },

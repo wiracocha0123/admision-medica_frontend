@@ -13,6 +13,7 @@ import Operadores from './pages/Admin/Operadores';
 import Especialidades from './pages/Admin/Especialidades';
 import Reportes from './pages/Admin/Reportes';
 import Pacientes from './pages/Admin/Pacientes';
+import Archivados from './pages/Admin/Archivados';
 import Forbidden from './pages/Forbidden';
 
 export default function App() {
@@ -39,6 +40,7 @@ export default function App() {
             <Route path="personal" element={<ProtectedRoute><Personal /></ProtectedRoute>} />
             <Route path="reportes" element={<ProtectedRoute><Reportes /></ProtectedRoute>} />
             <Route path="pacientes" element={<ProtectedRoute><Pacientes /></ProtectedRoute>} />
+            <Route path="archivados" element={<ProtectedRoute><Archivados /></ProtectedRoute>} />
             <Route path="especialidades" element={<ProtectedRoute><Especialidades /></ProtectedRoute>} />
             <Route path="operadores" element={<ProtectedRoute><Operadores /></ProtectedRoute>} />
           </Route>

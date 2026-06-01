@@ -386,7 +386,7 @@ export default function Personal() {
               <TableCell>Telèfono</TableCell>
               <TableCell>Email</TableCell>
               <TableCell>Especialidad</TableCell>
-              <TableCell>Horario semanal</TableCell>
+              <TableCell>Horario Mensual</TableCell>
               <TableCell align="right">Acciones</TableCell>
             </TableRow>
           </TableHead>
@@ -394,7 +394,6 @@ export default function Personal() {
             {isLoading ? [...Array(5)].map((_, i) => <TableRow key={i}><TableCell colSpan={7}><Skeleton /></TableCell></TableRow>) : 
              filteredItems.length === 0 ? <TableRow><TableCell colSpan={7} align="center">No hay personal registrado.</TableCell></TableRow> :
              filteredItems.map((p) => {
-               const horario = p.horario_semanal;
                return (
                  <TableRow key={p.id} hover>
                    <TableCell>
@@ -411,15 +410,23 @@ export default function Personal() {
                    <TableCell><Chip label={p.especialidad?.UPS || 'Sin asignar'} size="small" /></TableCell>
                    <TableCell>
                       <Stack spacing={1}>
-                        <HorarioSemanalDisplay horario={p.horario_semanal} />
-                        {p.horario_mensual && Array.isArray(p.horario_mensual) && p.horario_mensual.length > 0 && (
-                          <Chip 
-                            label="Mes Programado" 
+                        {p.horario_mensual && Array.isArray(p.horario_mensual) && p.horario_mensual.length > 0 ? (
+                          <Button 
                             size="small" 
-                            color="success" 
                             variant="outlined" 
-                            icon={<CalendarTodayIcon sx={{ fontSize: '0.8rem !important' }} />}
-                            sx={{ height: 20, fontSize: '0.65rem' }}
+                            startIcon={<CalendarTodayIcon />}
+                            onClick={() => handleOpenView(p)}
+                            color="success"
+                            sx={{ textTransform: 'none', borderRadius: 2 }}
+                          >
+                            Ver Programación
+                          </Button>
+                        ) : (
+                          <Chip 
+                            label="Sin Programación" 
+                            size="small" 
+                            variant="outlined" 
+                            sx={{ height: 24, fontSize: '0.75rem' }}
                           />
                         )}
                       </Stack>
@@ -480,42 +487,40 @@ export default function Personal() {
               </ListItem>
               <Divider />
               
-              <Divider />
               <ListItem>
                 <Box sx={{ width: '100%' }}>
-                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Horario Semanal</Typography>
-                  <HorarioSemanalDisplay horario={selectedItem.horario_semanal} />
-                </Box>
-              </ListItem>
-              <Divider />
-              <ListItem>
-                <Box sx={{ width: '100%' }}>
-                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Programación Mensual</Typography>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1, fontWeight: 'bold' }}>Programación Mensual</Typography>
                   {selectedItem.horario_mensual && Array.isArray(selectedItem.horario_mensual) && selectedItem.horario_mensual.length > 0 ? (
-                    <Box sx={{ maxHeight: 200, overflowY: 'auto', p: 1, border: '1px solid #eee', borderRadius: 1 }}>
-                      <Table size="small">
+                    <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 350, overflowY: 'auto' }}>
+                      <Table size="small" stickyHeader>
                         <TableHead>
                           <TableRow>
-                            <TableCell size="small">Día</TableCell>
-                            <TableCell size="small">Mañana</TableCell>
-                            <TableCell size="small">Tarde</TableCell>
-                            <TableCell size="small">Noche</TableCell>
+                            <TableCell size="small" sx={{ bgcolor: 'grey.100', fontWeight: 'bold' }}>Día</TableCell>
+                            <TableCell size="small" sx={{ bgcolor: 'grey.100', fontWeight: 'bold' }}>Mañana</TableCell>
+                            <TableCell size="small" sx={{ bgcolor: 'grey.100', fontWeight: 'bold' }}>Tarde</TableCell>
+                            <TableCell size="small" sx={{ bgcolor: 'grey.100', fontWeight: 'bold' }}>Noche</TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
                           {selectedItem.horario_mensual.map((d, index) => (
-                            <TableRow key={index}>
-                              <TableCell size="small">{d.dia}</TableCell>
-                              <TableCell size="small">{d.manana || '-'}</TableCell>
-                              <TableCell size="small">{d.tarde || '-'}</TableCell>
-                              <TableCell size="small">{d.noche || '-'}</TableCell>
+                            <TableRow key={index} hover>
+                              <TableCell size="small" sx={{ fontWeight: 'medium' }}>Día {d.dia}</TableCell>
+                              <TableCell size="small">
+                                <Chip label={d.manana || '-'} size="small" variant={d.manana ? "filled" : "outlined"} color={d.manana ? "primary" : "default"} sx={{ minWidth: 40, height: 20, fontSize: '0.65rem' }} />
+                              </TableCell>
+                              <TableCell size="small">
+                                <Chip label={d.tarde || '-'} size="small" variant={d.tarde ? "filled" : "outlined"} color={d.tarde ? "secondary" : "default"} sx={{ minWidth: 40, height: 20, fontSize: '0.65rem' }} />
+                              </TableCell>
+                              <TableCell size="small">
+                                <Chip label={d.noche || '-'} size="small" variant={d.noche ? "filled" : "outlined"} color={d.noche ? "warning" : "default"} sx={{ minWidth: 40, height: 20, fontSize: '0.65rem' }} />
+                              </TableCell>
                             </TableRow>
                           ))}
                         </TableBody>
                       </Table>
-                    </Box>
+                    </TableContainer>
                   ) : (
-                    <Typography variant="caption" color="text.secondary">No hay programación mensual registrada.</Typography>
+                    <Alert severity="info" size="small">No hay programación mensual registrada para este profesional.</Alert>
                   )}
                 </Box>
               </ListItem>

@@ -764,7 +764,24 @@ export default function Citas() {
                       <Avatar sx={{ width: 28, height: 28, fontSize: "0.75rem", bgcolor: "primary.main" }}>
                         {cita.paciente?.nombre?.[0] || "P"}
                       </Avatar>
-                      <Typography variant="body2">{cita.paciente?.nombre} {cita.paciente?.apellido}</Typography>
+                      <Box>
+                        <Typography variant="body2">{cita.paciente?.nombre} {cita.paciente?.apellido}</Typography>
+                        {cita.paciente?.estado === 'Archivado' && (
+                          <Chip 
+                            label="Historial Archivado" 
+                            size="small" 
+                            color="error"
+                            variant="outlined"
+                            sx={{ 
+                              height: 16, 
+                              fontSize: '0.6rem', 
+                              mt: 0.2, 
+                              fontWeight: 'bold',
+                              borderColor: 'error.main'
+                            }} 
+                          />
+                        )}
+                      </Box>
                     </Box>
                   </TableCell>
                   <TableCell>

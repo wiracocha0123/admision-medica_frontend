@@ -744,7 +744,7 @@ export default function Pacientes() {
                               gap: 0.5
                             }}
                           >
-                            • Gestante {p.detalle_gestante && `(${p.detalle_gestante})`}
+                            {p.detalle_gestante && `(${p.detalle_gestante})`}
                           </Typography>
                         </Tooltip>
                       )}

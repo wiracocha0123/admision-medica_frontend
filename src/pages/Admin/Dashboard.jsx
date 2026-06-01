@@ -100,22 +100,57 @@ export default function Dashboard() {
 
   const workingStaffToday = useMemo(() => {
     if (!staffList.length) return [];
+    
     const daysMap = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
     const selectedDayName = daysMap[filterDate.getDay()];
+    const selectedDayNumber = filterDate.getDate();
     
-    return staffList.filter(s => {
-      let schedule = s.horario_semanal;
-      if (typeof schedule === 'string') try { schedule = JSON.parse(schedule); } catch (e) { schedule = null; }
-      if (Array.isArray(schedule) && schedule.length > 0) schedule = schedule[0];
-      return schedule && schedule[selectedDayName] && Object.keys(schedule[selectedDayName]).length > 0;
-    }).map(s => {
-      let schedule = s.horario_semanal;
-      if (typeof schedule === 'string') try { schedule = JSON.parse(schedule); } catch (e) {}
-      if (Array.isArray(schedule) && schedule.length > 0) schedule = schedule[0];
-      const dayData = schedule[selectedDayName] || {};
-      const turnosStr = Object.entries(dayData).map(([turno, horas]) => `${turno}: ${horas}`).join(' | ');
-      return { ...s, turnosDisplay: turnosStr || 'Sin turnos' };
-    });
+    return staffList.map(s => {
+      let turnosDisplay = '';
+      let isWorking = false;
+
+      // 1. Prioridad: Horario Mensual (más específico para la fecha seleccionada)
+      let mensual = s.horario_mensual;
+      if (typeof mensual === 'string') try { mensual = JSON.parse(mensual); } catch (e) { mensual = []; }
+      
+      if (Array.isArray(mensual) && mensual.length > 0) {
+        const diaData = mensual.find(d => (d.dia_numero || d.dia) === selectedDayNumber);
+        if (diaData) {
+          const tM = diaData.turno_m || diaData.manana;
+          const tT = diaData.turno_t || diaData.tarde;
+          const tN = diaData.turno_n || diaData.noche;
+
+          const turnos = [];
+          if (tM && tM !== 'V') turnos.push(`Mañana: ${tM}`);
+          if (tT && tT !== 'V') turnos.push(`Tarde: ${tT}`);
+          if (tN && tN !== 'V') turnos.push(`Noche: ${tN}`);
+
+          if (turnos.length > 0) {
+            turnosDisplay = turnos.join(' | ');
+            isWorking = true;
+          }
+        }
+      }
+
+      // 2. Fallback: Horario Semanal (si no hay dato mensual o no está trabajando ese día según el mensual)
+      if (!isWorking) {
+        let schedule = s.horario_semanal;
+        if (typeof schedule === 'string') try { schedule = JSON.parse(schedule); } catch (e) { schedule = null; }
+        if (Array.isArray(schedule) && schedule.length > 0) schedule = schedule[0];
+        
+        const dayData = schedule ? schedule[selectedDayName] : null;
+        if (dayData && Object.keys(dayData).length > 0) {
+          turnosDisplay = Object.entries(dayData)
+            .filter(([_, horas]) => horas && horas !== 'V')
+            .map(([turno, horas]) => `${turno.charAt(0).toUpperCase() + turno.slice(1)}: ${horas}`)
+            .join(' | ');
+          
+          if (turnosDisplay) isWorking = true;
+        }
+      }
+
+      return { ...s, turnosDisplay, isWorking };
+    }).filter(s => s.isWorking);
   }, [staffList, filterDate]);
 
   const filteredCitas = useMemo(() => {

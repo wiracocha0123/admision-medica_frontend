@@ -375,24 +375,21 @@ export default function Personal() {
           const rowN = data[i+2] || [];
 
           const monthlySchedule = [];
-          // Días 1 a 31
-          // Según el screenshot: Nº(0), Nombre(1), Cargo(2), Condición(3), URNO(4), Día 1 (5)
+          // Siempre iteramos hasta 31 para asegurar la estructura mínima requerida por la BD
           for (let d = 1; d <= 31; d++) {
             const colIndex = d + 4; // Día 1 es columna F (index 5)
             
-            // FILTRO CRÍTICO: Si el valor de la fila superior (donde están los números 1, 2, 3...)
-            // no es un número o es "TOTAL", detenemos la lectura de días.
-            // Buscamos en la fila de encabezados (usualmente 1 o 2 filas arriba del primer staff)
+            // Verificamos si la columna actual es el "TOTAL" o está fuera de rango
             const headerRow = data[i-1] || data[i-2] || [];
             const dayLabel = String(headerRow[colIndex] || '').toUpperCase();
             
-            if (dayLabel.includes('TOTAL') || (d > 28 && !dayLabel)) {
-              break; 
-            }
+            // Si detectamos el TOTAL, dejamos de leer datos del Excel, 
+            // pero seguiremos llenando el array con nulls hasta completar 31 días.
+            let isPastTotal = dayLabel.includes('TOTAL') || (d > 28 && !dayLabel);
 
-            const valM = String(rowM[colIndex] || '').trim();
-            const valT = String(rowT[colIndex] || '').trim();
-            const valN = String(rowN[colIndex] || '').trim();
+            const valM = !isPastTotal ? String(rowM[colIndex] || '').trim() : '';
+            const valT = !isPastTotal ? String(rowT[colIndex] || '').trim() : '';
+            const valN = !isPastTotal ? String(rowN[colIndex] || '').trim() : '';
 
             monthlySchedule.push({
               dia_numero: d,

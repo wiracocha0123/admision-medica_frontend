@@ -20,9 +20,11 @@ export default function HorarioMensualPicker({ value, onChange }) {
     return eachDayOfInterval({ start, end });
   }, []);
 
-  // Inicializar si el value está vacío o no tiene la longitud correcta
+  // Inicializar si el value está vacío
   useEffect(() => {
-    if (!Array.isArray(value) || value.length !== diasDelMes.length) {
+    // Solo inicializamos si el valor es realmente nulo o un array vacío.
+    // Evitamos pisar los datos si el array ya tiene información aunque sea de distinta longitud (mes diferente)
+    if (!value || (Array.isArray(value) && value.length === 0)) {
       const initialHorario = diasDelMes.map((date) => ({
         dia_numero: getDate(date),
         turno_m: '',
@@ -31,7 +33,7 @@ export default function HorarioMensualPicker({ value, onChange }) {
       }));
       onChange(initialHorario);
     }
-  }, [diasDelMes, value, onChange]);
+  }, [diasDelMes, onChange]); // Quitamos 'value' de las dependencias para que no se reinicie al escribir
 
   const handleInputChange = (index, field, newValue) => {
     const updatedHorario = [...value];

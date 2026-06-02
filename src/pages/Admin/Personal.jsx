@@ -9,16 +9,18 @@ import {
 import { 
   Edit as EditIcon, Delete as DeleteIcon, Visibility as ViewIcon, 
   Add as AddIcon, Refresh as RefreshIcon, Search as SearchIcon,
-  FilterList as FilterIcon, CalendarToday as CalendarTodayIcon
+  FilterList as FilterIcon, CalendarToday as CalendarTodayIcon,
+  FileUpload as ImportIcon, CheckCircle as CheckIcon, Warning as WarningIcon
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getPersonalSalud, deletePersonalSalud, updatePersonalSalud, createPersonalSalud } from '../../services/personalService';
-import { getEspecialidades } from '../../services/especialidadesService';
+import { getEspecialidades, createEspecialidad, updateEspecialidad } from '../../services/especialidadesService';
 import { AuthContext } from '../../contexts/AuthContext';
 import HorarioSemanalDisplay from '../../components/HorarioSemanalDisplay';
 import HorarioSemanalPicker from '../../components/HorarioSemanalPicker';
 import HorarioMensualPicker from '../../components/HorarioMensualPicker';
 import Swal from 'sweetalert2';
+import * as XLSX from 'xlsx';
 
 export default function Personal() {
   const { user } = useContext(AuthContext);
@@ -35,6 +37,11 @@ export default function Personal() {
 
   // Estados para Edición/Creación
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+
+  // --- NUEVOS ESTADOS PARA IMPORTACIÓN ---
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importResults, setImportResults] = useState([]); // { name, staff, conflict, decision }
+  const [isProcessingImport, setIsProcessingImport] = useState(false);
 
   const [formData, setFormData] = useState({
     nombres: '',
@@ -314,6 +321,190 @@ export default function Personal() {
     return matchesText && matchesEspecialidad;
   });
 
+  const handleProcessExcel = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const bstr = evt.target.result;
+      const wb = XLSX.read(bstr, { type: 'binary' });
+      const wsname = wb.SheetNames[0];
+      const ws = wb.Sheets[wsname];
+      const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+      const entities = [];
+      let currentSpecialty = null;
+
+      for (let i = 0; i < data.length; i++) {
+        const row = data[i];
+        if (!row || row.length === 0) continue;
+
+        const possibleHeader = String(row[1] || row[0] || '').toUpperCase();
+        
+        // Ignorar encabezados genéricos como el título del documento
+        if (possibleHeader.includes('PROGRAMACION DE TURNOS') || possibleHeader.includes('C.S. SAN VICENTE')) {
+          continue;
+        }
+
+        // Detectar cambio de Especialidad (Buscamos "SERVICIO DE", "AREA DE", etc)
+        if (possibleHeader.includes('SERVICIO DE') || possibleHeader.includes('AREA DE') || (row.length < 7 && row[0]?.length > 10)) {
+          let name = possibleHeader.replace('SERVICIO DE', '').replace('AREA DE', '').trim();
+          if (name.length > 3) {
+            currentSpecialty = { name, staff: [] };
+            entities.push(currentSpecialty);
+          }
+          continue;
+        }
+
+        // Si tenemos una especialidad, buscar personal (Fila con número en col 0 y Nombre en col 1)
+        const possibleId = parseInt(row[0]);
+        if (!isNaN(possibleId) && currentSpecialty && row[1]) {
+          const nombres_completos = String(row[1]).trim();
+          
+          // El personal ocupa 3 filas (M, T, N)
+          const rowM = row;
+          const rowT = data[i+1] || [];
+          const rowN = data[i+2] || [];
+
+          const monthlySchedule = [];
+          // Días 1 a 31
+          // Según el screenshot: Nº(0), Nombre(1), Cargo(2), Condición(3), URNO(4), Día 1 (5)
+          for (let d = 1; d <= 31; d++) {
+            const colIndex = d + 4; // Día 1 es columna F (index 5). 1 + 4 = 5.
+            const valM = String(rowM[colIndex] || '').trim();
+            const valT = String(rowT[colIndex] || '').trim();
+            const valN = String(rowN[colIndex] || '').trim();
+
+            monthlySchedule.push({
+              dia_numero: d,
+              turno_m: valM || null,
+              turno_t: valT || null,
+              turno_n: valN || null
+            });
+          }
+
+          const parts = nombres_completos.split(' ');
+          let apellidos = '', nombres = '';
+          if (parts.length >= 3) {
+            apellidos = `${parts[parts.length - 2]} ${parts[parts.length - 1]}`;
+            nombres = parts.slice(0, -2).join(' ');
+          } else {
+            apellidos = parts[parts.length - 1];
+            nombres = parts[0];
+          }
+
+          currentSpecialty.staff.push({
+            nombres,
+            apellidos,
+            horario_mensual: monthlySchedule
+          });
+
+          i += 2; // Saltamos las filas T y N
+        }
+      }
+
+      // Comparar con especialidades existentes
+      const results = entities.map(entity => {
+        const existing = especialidades.find(e => e.especialidad.toUpperCase().includes(entity.name.toUpperCase()));
+        return {
+          ...entity,
+          selected: true,
+          conflict: !!existing,
+          existingId: existing?.id,
+          decision: existing ? 'update' : 'create' // update personal inside, create specialty
+        };
+      });
+
+      setImportResults(results);
+      setImportDialogOpen(true);
+      e.target.value = null; // Reset input
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const handleFinalImport = async () => {
+    setIsProcessingImport(true);
+    let successCount = 0;
+    let errorCount = 0;
+
+    // Mostrar modal de progreso con Swal
+    Swal.fire({
+      title: 'Importando Datos...',
+      html: 'Procesando registros de personal y especialidades. Por favor espere...<br><b>0</b> registros completados.',
+      allowOutsideClick: false,
+      didOpen: () => {
+        Swal.showLoading();
+      }
+    });
+
+    try {
+      const selectedEntities = importResults.filter(r => r.selected);
+      for (const entity of selectedEntities) {
+        let specialtyId = entity.existingId;
+
+        if (!specialtyId || entity.decision === 'rename') {
+          // Crear nueva especialidad
+          const respEsp = await createEspecialidad({ 
+            especialidad: entity.name,
+            UPS: entity.name.substring(0, 5).toUpperCase() 
+          });
+          // Aseguramos capturar el ID correctamente (Laravel puede devolverlo en root o dentro de data)
+          specialtyId = respEsp?.id || respEsp?.data?.id;
+        }
+
+        if (!specialtyId) {
+          console.error("No se pudo obtener el ID de la especialidad para:", entity.name);
+          errorCount += entity.staff.length;
+          continue;
+        }
+
+        // Importar personal
+        let tempDniBase = Math.floor(Math.random() * 90000000) + 10000000;
+        for (let s of entity.staff) {
+          try {
+            const tempDni = String(tempDniBase++);
+            
+            const payload = {
+              nombres: s.nombres,
+              apellidos: s.apellidos,
+              especialidad_id: specialtyId, // AHORA SÍ O SÍ TIENE VALOR
+              dni: tempDni,
+              email: `${s.nombres.toLowerCase().replace(/[^a-z]/g, '').substring(0, 5)}${tempDni.substring(4)}@hosp.gob.pe`,
+              telefono: '900000000',
+              horario_semanal: [],
+              horario_mensual: s.horario_mensual || []
+            };
+
+            await createPersonalSalud(payload);
+            successCount++;
+            
+            // Actualizar mensaje de progreso
+            Swal.getHtmlContainer().querySelector('b').textContent = `${successCount}`;
+          } catch (e) {
+            console.error("Error detallado en fila:", s.nombres, e.response?.data || e.message);
+            errorCount++;
+          }
+        }
+      }
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Importación Finalizada',
+        text: `Se procesaron ${successCount} registros con éxito. Errores: ${errorCount}`,
+        confirmButtonColor: '#3085d6'
+      });
+      queryClient.invalidateQueries(['personal']);
+      setImportResults([]);
+      setImportDialogOpen(false);
+    } catch (error) {
+      console.error("Error crítico en importación:", error);
+      Swal.fire('Error', 'Ocurrió un error crítico durante la importación.', 'error');
+    } finally {
+      setIsProcessingImport(false);
+    }
+  };
+
   const formatHora = (val) => {
     if (!val) return '-';
     if (typeof val === 'string' && val.includes(':')) return val.substring(0, 5);
@@ -331,6 +522,21 @@ export default function Personal() {
           Personal de Salud
         </Typography>
         <Stack direction="row" spacing={2}>
+          <input
+            type="file"
+            accept=".xlsx, .xls"
+            style={{ display: 'none' }}
+            id="import-rol-input"
+            onChange={(e) => handleProcessExcel(e)}
+          />
+          <Button 
+            variant="outlined" 
+            startIcon={<ImportIcon />}
+            color="success"
+            onClick={() => document.getElementById('import-rol-input').click()}
+          >
+            Importar Rol Mensual
+          </Button>
           <Button 
             variant="outlined" 
             startIcon={<RefreshIcon />} 
@@ -660,6 +866,95 @@ export default function Personal() {
           </DialogActions>
         </form>
       </Dialog>
+      {/* Modal de Revisión de Importación */}
+      <Dialog open={importDialogOpen} onClose={() => !isProcessingImport && setImportDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: 'success.dark', color: 'white' }}>
+          <ImportIcon /> Revisión de Importación de Rol
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Se han detectado las siguientes áreas y personal en el archivo Excel. 
+            Seleccione cuáles desea importar y cómo manejar los que ya existen.
+          </Typography>
+
+          <TableContainer component={Paper} variant="outlined" sx={{ mt: 2 }}>
+            <Table size="small">
+              <TableHead sx={{ bgcolor: 'grey.100' }}>
+                <TableRow>
+                  <TableCell padding="checkbox"></TableCell>
+                  <TableCell>Área / Especialidad Detectada</TableCell>
+                  <TableCell align="center">Personal</TableCell>
+                  <TableCell>Estado / Conflicto</TableCell>
+                  <TableCell>Acción</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {importResults.map((res, idx) => (
+                  <TableRow key={idx} hover selected={res.selected}>
+                    <TableCell padding="checkbox">
+                      <input 
+                        type="checkbox" 
+                        checked={res.selected} 
+                        onChange={(e) => {
+                          const newResults = [...importResults];
+                          newResults[idx].selected = e.target.checked;
+                          setImportResults(newResults);
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: 'bold' }}>{res.name}</TableCell>
+                    <TableCell align="center">{res.staff.length}</TableCell>
+                    <TableCell>
+                      {res.conflict ? (
+                        <Chip icon={<WarningIcon />} label="Ya existe" color="warning" size="small" variant="outlined" />
+                      ) : (
+                        <Chip icon={<CheckIcon />} label="Nuevo" color="success" size="small" variant="outlined" />
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {res.conflict && (
+                        <TextField
+                          select
+                          size="small"
+                          value={res.decision}
+                          onChange={(e) => {
+                            const newResults = [...importResults];
+                            newResults[idx].decision = e.target.value;
+                            setImportResults(newResults);
+                          }}
+                          sx={{ fontSize: '0.75rem', minWidth: 150 }}
+                        >
+                          <MenuItem value="update">Usar Existente</MenuItem>
+                          <MenuItem value="rename">Crear como Nuevo</MenuItem>
+                        </TextField>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+
+          {isProcessingImport && (
+            <Box sx={{ mt: 2, textAlign: 'center' }}>
+              <Skeleton variant="rectangular" height={10} sx={{ mb: 1 }} />
+              <Typography variant="caption">Procesando registros, por favor espere...</Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setImportDialogOpen(false)} disabled={isProcessingImport}>Cancelar</Button>
+          <Button 
+            variant="contained" 
+            color="success" 
+            onClick={handleFinalImport} 
+            disabled={isProcessingImport || !importResults.some(r => r.selected)}
+          >
+            {isProcessingImport ? 'Importando...' : `Importar ${importResults.filter(r => r.selected).length} Áreas`}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
     </Paper>
   );
 }

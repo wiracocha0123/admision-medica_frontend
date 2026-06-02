@@ -194,7 +194,10 @@ export default function Personal() {
 
       let normalizedMensual = item.horario_mensual;
       if (typeof normalizedMensual === 'string' && normalizedMensual) {
-        try { normalizedMensual = JSON.parse(normalizedMensual); } catch (e) { normalizedMensual = []; }
+        try { normalizedMensual = JSON.parse(normalizedMensual); } catch (e) { 
+          console.error("Error parseando mensual:", e);
+          normalizedMensual = []; 
+        }
       }
       
       const cleanMensual = Array.isArray(normalizedMensual) 
@@ -343,7 +346,7 @@ export default function Personal() {
         const possibleHeader = String(row[1] || row[0] || '').toUpperCase();
         
         // Ignorar encabezados genéricos como el título del documento
-        if (possibleHeader.includes('PROGRAMACION DE TURNOS') || possibleHeader.includes('C.S. SAN VICENTE')) {
+        if (possibleHeader.includes('PROGRAMACION DE TURNOS') || possibleHeader.includes('C.S. SAN VICENTE') || possibleHeader.includes('TOTAL')) {
           continue;
         }
 
@@ -372,6 +375,10 @@ export default function Personal() {
           // Según el screenshot: Nº(0), Nombre(1), Cargo(2), Condición(3), URNO(4), Día 1 (5)
           for (let d = 1; d <= 31; d++) {
             const colIndex = d + 4; // Día 1 es columna F (index 5). 1 + 4 = 5.
+            
+            // Si el índice de la columna supera el límite de días (llegamos al TOTAL), lo ignoramos
+            if (colIndex > 35) break; 
+
             const valM = String(rowM[colIndex] || '').trim();
             const valT = String(rowT[colIndex] || '').trim();
             const valN = String(rowN[colIndex] || '').trim();

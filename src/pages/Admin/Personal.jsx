@@ -210,12 +210,20 @@ export default function Personal() {
         normalizedMensual = [];
       }
       
-      const cleanMensual = normalizedMensual.map((d, idx) => ({
-        dia_numero: parseInt(d.dia_numero || d.dia || (idx + 1)),
-        turno_m: d.turno_m || d.manana || '',
-        turno_t: d.turno_t || d.tarde || '',
-        turno_n: d.turno_n || d.noche || ''
-      }));
+      const cleanMensual = normalizedMensual.map((d, idx) => {
+        // Obtenemos los valores intentando todos los nombres posibles (importante tras cambios de importación)
+        const diaNum = parseInt(d.dia_numero || d.dia || (idx + 1));
+        const m = d.turno_m || d.manana || '';
+        const t = d.turno_t || d.tarde || '';
+        const n = d.turno_n || d.noche || '';
+        
+        return {
+          dia_numero: diaNum,
+          turno_m: m,
+          turno_t: t,
+          turno_n: n
+        };
+      });
 
       console.log("Horario mensual normalizado para Edit:", cleanMensual);
 

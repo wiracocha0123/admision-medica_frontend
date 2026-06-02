@@ -192,26 +192,32 @@ export default function Personal() {
         normalizedHorario = normalizedHorario[0] || {};
       }
 
+      // 2. Normalizar horario MENSUAL (Crucial para el componente HorarioMensualPicker)
       let normalizedMensual = item.horario_mensual;
+      
+      // Si el backend lo devuelve como String, lo parseamos
       if (typeof normalizedMensual === 'string' && normalizedMensual) {
         try { 
           normalizedMensual = JSON.parse(normalizedMensual); 
         } catch (e) { 
-          console.error("Error parseando mensual:", e);
+          console.error("Error parseando horario mensual string:", e);
           normalizedMensual = []; 
         }
       }
+
+      // Asegurar que sea un array
+      if (!Array.isArray(normalizedMensual)) {
+        normalizedMensual = [];
+      }
       
-      const cleanMensual = Array.isArray(normalizedMensual) 
-        ? normalizedMensual.map((d, idx) => ({
-            dia_numero: parseInt(d.dia_numero || d.dia || (idx + 1)),
-            turno_m: d.turno_m || d.manana || '',
-            turno_t: d.turno_t || d.tarde || '',
-            turno_n: d.turno_n || d.noche || ''
-          }))
-        : [];
-      
-      console.log("Horario mensual normalizado:", cleanMensual);
+      const cleanMensual = normalizedMensual.map((d, idx) => ({
+        dia_numero: parseInt(d.dia_numero || d.dia || (idx + 1)),
+        turno_m: d.turno_m || d.manana || '',
+        turno_t: d.turno_t || d.tarde || '',
+        turno_n: d.turno_n || d.noche || ''
+      }));
+
+      console.log("Horario mensual normalizado para Edit:", cleanMensual);
 
       setFormData({
         id: item.id,
@@ -375,21 +381,35 @@ export default function Personal() {
           const rowN = data[i+2] || [];
 
           const monthlySchedule = [];
-          // Siempre iteramos hasta 31 para asegurar la estructura mínima requerida por la BD
+          // Verificamos cuántos días tiene realmente el mes mirando el encabezado
+          let activeDaysInMonth = 0;
+          const headerRow = data[i-1] || data[i-2] || [];
+          
           for (let d = 1; d <= 31; d++) {
-            const colIndex = d + 4; // Día 1 es columna F (index 5)
-            
-            // Verificamos si la columna actual es el "TOTAL" o está fuera de rango
-            const headerRow = data[i-1] || data[i-2] || [];
+            const colIndex = d + 4;
             const dayLabel = String(headerRow[colIndex] || '').toUpperCase();
-            
-            // Si detectamos el TOTAL, dejamos de leer datos del Excel, 
-            // pero seguiremos llenando el array con nulls hasta completar 31 días.
-            let isPastTotal = dayLabel.includes('TOTAL') || (d > 28 && !dayLabel);
+            if (dayLabel && !dayLabel.includes('TOTAL')) {
+              activeDaysInMonth = d;
+            } else {
+              break;
+            }
+          }
 
-            const valM = !isPastTotal ? String(rowM[colIndex] || '').trim() : '';
-            const valT = !isPastTotal ? String(rowT[colIndex] || '').trim() : '';
-            const valN = !isPastTotal ? String(rowN[colIndex] || '').trim() : '';
+          // Siempre llenamos al menos 30 para la BD, pero solo con datos del Excel hasta activeDaysInMonth
+          for (let d = 1; d <= 31; d++) {
+            const colIndex = d + 4;
+            let valM = '', valT = '', valN = '';
+            
+            if (d <= activeDaysInMonth) {
+              valM = String(rowM[colIndex] || '').trim();
+              valT = String(rowT[colIndex] || '').trim();
+              valN = String(rowN[colIndex] || '').trim();
+            }
+
+            // Si el mes tiene 28/29 días (febrero), el bucle seguirá hasta completar 30/31 con campos vacíos
+            if (d > activeDaysInMonth && d < 30) {
+              // Esto asegura llegar a 30 aunque el mes sea corto
+            }
 
             monthlySchedule.push({
               dia_numero: d,

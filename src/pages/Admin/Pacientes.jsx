@@ -356,8 +356,8 @@ export default function Pacientes() {
             });
 
             let successCount = 0;
-            let skippedCount = 0;
-            let errorCount = 0;
+            let skippedDetails = []; // Para duplicados
+            let errorDetails = [];   // Para errores técnicos
             const CHUNK_SIZE = 50; 
 
             for (let i = 0; i < data.length; i += CHUNK_SIZE) {
@@ -366,14 +366,25 @@ export default function Pacientes() {
               const promises = chunk.map(async (row) => {
                 const dniKey = Object.keys(row).find(k => k.toUpperCase() === 'DNI');
                 const dni = (row[dniKey] || '').toString().trim();
-                if (!dni) return;
+                
+                // Si no hay DNI, lo contamos como error técnico de datos
+                if (!dni) {
+                  errorDetails.push({ 
+                    info: `Fila ${i + data.indexOf(row) + 1}`, 
+                    reason: 'DNI ausente o vacío' 
+                  });
+                  return;
+                }
 
                 const fullNameKey = Object.keys(row).find(k => k.toUpperCase().includes('NOMBRE'));
                 const fullName = (row[fullNameKey] || '').toString().trim();
                 const words = fullName.split(/\s+/).filter(Boolean);
                 
                 let apellido = '', nombre = '';
-                if (words.length === 0) { apellido = 'PACIENTE'; nombre = 'N.N.'; }
+                if (words.length === 0) { 
+                  apellido = 'PACIENTE'; 
+                  nombre = 'SIN NOMBRE'; 
+                }
                 else if (words.length >= 2) { 
                   apellido = words[0] + ' ' + words[1]; 
                   nombre = words.slice(2).join(' ') || words[0]; 
@@ -392,11 +403,17 @@ export default function Pacientes() {
                   await createPaciente(payload);
                   successCount++;
                 } catch (err) {
-                  // Si el error es 422 (Unprocessable Content), probablemente es DNI o HC duplicado
-                  if (err.response?.status === 422 || err.response?.data?.message?.includes('taken')) {
-                    skippedCount++;
+                  const errorMsg = err.response?.data?.errors 
+                    ? JSON.stringify(err.response.data.errors) 
+                    : (err.response?.data?.message || err.message || 'Error desconocido');
+                  
+                  const patientInfo = `${dni} | ${nombre} ${apellido}`;
+
+                  // Si el error es 422 (Unprocessable Content) o indica duplicado
+                  if (err.response?.status === 422 || errorMsg.toLowerCase().includes('taken')) {
+                    skippedDetails.push({ info: patientInfo, reason: 'DNI o HC duplicado' });
                   } else {
-                    errorCount++;
+                    errorDetails.push({ info: patientInfo, reason: errorMsg });
                   }
                 }
               });
@@ -405,7 +422,7 @@ export default function Pacientes() {
               
               // Actualizar el progreso en el modal sin cerrarlo
               const progressHtml = `Progreso: <b>${Math.min(i + CHUNK_SIZE, data.length).toLocaleString()}</b> / ${data.length.toLocaleString()}<br/>` +
-                                   `<small>Omitidos (duplicados): ${skippedCount} | Errores: ${errorCount}</small>`;
+                                   `<small>Omitidos (duplicados): ${skippedDetails.length} | Errores: ${errorDetails.length}</small>`;
               Swal.update({ html: progressHtml });
               
               // Pequeña pausa cada 500 registros para liberar el hilo principal
@@ -415,12 +432,48 @@ export default function Pacientes() {
             }
 
             queryClient.invalidateQueries(['pacientes']);
+            
+            const totalFails = skippedDetails.length + errorDetails.length;
+
             Swal.fire({
-              icon: 'success',
+              icon: totalFails > 0 ? 'warning' : 'success',
               title: 'Importación terminada',
               html: `<b>Nuevos registrados:</b> ${successCount}<br/>` +
-                    `<b>Omitidos (duplicados):</b> ${skippedCount}<br/>` +
-                    `<b>Errores técnicos:</b> ${errorCount}`,
+                    `<b>Omitidos (duplicados):</b> ${skippedDetails.length}<br/>` +
+                    `<b>Errores técnicos:</b> ${errorDetails.length}`,
+              footer: totalFails > 0 ? '<button id="btnVerDetalles" class="swal2-confirm swal2-styled" style="background-color: #7c4dff">Ver Detalle de Errores</button>' : null,
+              didOpen: () => {
+                const btn = document.getElementById('btnVerDetalles');
+                if (btn) {
+                  btn.onclick = () => {
+                    const errorRows = errorDetails.map(d => `<tr><td>${d.info}</td><td style="color:red">${d.reason}</td></tr>`).join('');
+                    const skippedRows = skippedDetails.map(d => `<tr><td>${d.info}</td><td style="color:orange">${d.reason}</td></tr>`).join('');
+                    
+                    Swal.fire({
+                      title: 'Detalle de Fallos',
+                      width: '800px',
+                      html: `
+                        <div style="max-height: 400px; overflow-y: auto; text-align: left; font-size: 0.8rem">
+                          <table style="width: 100%; border-collapse: collapse;">
+                            <thead>
+                              <tr style="border-bottom: 2px solid #ccc">
+                                <th>Paciente/DNI</th>
+                                <th>Motivo</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              ${errorRows}
+                              ${skippedRows}
+                            </tbody>
+                          </table>
+                        </div>
+                      `,
+                      confirmButtonText: 'Cerrar',
+                      heightAuto: false
+                    });
+                  };
+                }
+              },
               heightAuto: false
             });
           }

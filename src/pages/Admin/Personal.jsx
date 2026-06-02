@@ -194,7 +194,9 @@ export default function Personal() {
 
       let normalizedMensual = item.horario_mensual;
       if (typeof normalizedMensual === 'string' && normalizedMensual) {
-        try { normalizedMensual = JSON.parse(normalizedMensual); } catch (e) { 
+        try { 
+          normalizedMensual = JSON.parse(normalizedMensual); 
+        } catch (e) { 
           console.error("Error parseando mensual:", e);
           normalizedMensual = []; 
         }
@@ -202,12 +204,14 @@ export default function Personal() {
       
       const cleanMensual = Array.isArray(normalizedMensual) 
         ? normalizedMensual.map((d, idx) => ({
-            dia_numero: d.dia_numero || d.dia || (idx + 1),
+            dia_numero: parseInt(d.dia_numero || d.dia || (idx + 1)),
             turno_m: d.turno_m || d.manana || '',
             turno_t: d.turno_t || d.tarde || '',
             turno_n: d.turno_n || d.noche || ''
           }))
         : [];
+      
+      console.log("Horario mensual normalizado:", cleanMensual);
 
       setFormData({
         id: item.id,
@@ -374,10 +378,17 @@ export default function Personal() {
           // Días 1 a 31
           // Según el screenshot: Nº(0), Nombre(1), Cargo(2), Condición(3), URNO(4), Día 1 (5)
           for (let d = 1; d <= 31; d++) {
-            const colIndex = d + 4; // Día 1 es columna F (index 5). 1 + 4 = 5.
+            const colIndex = d + 4; // Día 1 es columna F (index 5)
             
-            // Si el índice de la columna supera el límite de días (llegamos al TOTAL), lo ignoramos
-            if (colIndex > 35) break; 
+            // FILTRO CRÍTICO: Si el valor de la fila superior (donde están los números 1, 2, 3...)
+            // no es un número o es "TOTAL", detenemos la lectura de días.
+            // Buscamos en la fila de encabezados (usualmente 1 o 2 filas arriba del primer staff)
+            const headerRow = data[i-1] || data[i-2] || [];
+            const dayLabel = String(headerRow[colIndex] || '').toUpperCase();
+            
+            if (dayLabel.includes('TOTAL') || (d > 28 && !dayLabel)) {
+              break; 
+            }
 
             const valM = String(rowM[colIndex] || '').trim();
             const valT = String(rowT[colIndex] || '').trim();

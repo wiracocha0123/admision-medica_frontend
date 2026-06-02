@@ -348,6 +348,15 @@ export default function Personal() {
 
       const entities = [];
       let currentSpecialty = null;
+      let headerRowIndex = -1;
+
+      // Primero buscamos la fila de cabecera con los números (1, 2, 3...)
+      for (let k = 0; k < Math.min(data.length, 20); k++) {
+        if (String(data[k]?.[5]) === '1' && String(data[k]?.[6]) === '2') {
+          headerRowIndex = k;
+          break;
+        }
+      }
 
       for (let i = 0; i < data.length; i++) {
         const row = data[i];
@@ -360,7 +369,7 @@ export default function Personal() {
           continue;
         }
 
-        // Detectar cambio de Especialidad (Buscamos "SERVICIO DE", "AREA DE", etc)
+        // Detectar cambio de Especialidad
         if (possibleHeader.includes('SERVICIO DE') || possibleHeader.includes('AREA DE') || (row.length < 7 && row[0]?.length > 10)) {
           let name = possibleHeader.replace('SERVICIO DE', '').replace('AREA DE', '').trim();
           if (name.length > 3) {
@@ -370,32 +379,30 @@ export default function Personal() {
           continue;
         }
 
-        // Si tenemos una especialidad, buscar personal (Fila con número en col 0 y Nombre en col 1)
+        // Si tenemos una especialidad, buscar personal
         const possibleId = parseInt(row[0]);
         if (!isNaN(possibleId) && currentSpecialty && row[1]) {
           const nombres_completos = String(row[1]).trim();
           
-          // El personal ocupa 3 filas (M, T, N)
           const rowM = row;
           const rowT = data[i+1] || [];
           const rowN = data[i+2] || [];
 
           const monthlySchedule = [];
-          // Verificamos cuántos días tiene realmente el mes mirando el encabezado
-          let activeDaysInMonth = 0;
-          const headerRow = data[i-1] || data[i-2] || [];
           
-          for (let d = 1; d <= 31; d++) {
-            const colIndex = d + 4;
-            const dayLabel = String(headerRow[colIndex] || '').toUpperCase();
-            if (dayLabel && !dayLabel.includes('TOTAL')) {
-              activeDaysInMonth = d;
-            } else {
-              break;
+          // Determinamos cuántos días tiene el mes basándonos en la cabecera encontrada
+          let activeDaysInMonth = 31; 
+          if (headerRowIndex !== -1) {
+            const hRow = data[headerRowIndex];
+            for (let d = 1; d <= 31; d++) {
+              const val = String(hRow[d + 4] || '').toUpperCase();
+              if (!val || val.includes('TOTAL')) {
+                activeDaysInMonth = d - 1;
+                break;
+              }
             }
           }
 
-          // Siempre llenamos al menos 30 para la BD, pero solo con datos del Excel hasta activeDaysInMonth
           for (let d = 1; d <= 31; d++) {
             const colIndex = d + 4;
             let valM = '', valT = '', valN = '';
@@ -404,11 +411,6 @@ export default function Personal() {
               valM = String(rowM[colIndex] || '').trim();
               valT = String(rowT[colIndex] || '').trim();
               valN = String(rowN[colIndex] || '').trim();
-            }
-
-            // Si el mes tiene 28/29 días (febrero), el bucle seguirá hasta completar 30/31 con campos vacíos
-            if (d > activeDaysInMonth && d < 30) {
-              // Esto asegura llegar a 30 aunque el mes sea corto
             }
 
             monthlySchedule.push({

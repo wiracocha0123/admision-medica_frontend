@@ -88,6 +88,17 @@ export default function Dashboard() {
   const appointmentsList = useMemo(() => stats?.appointments_all || [], [stats]);
   const recentPatients = useMemo(() => stats?.recent_patients || [], [stats]);
 
+  const filteredRecentPatients = useMemo(() => {
+    if (!recentPatients || recentPatients.length === 0) return [];
+    return recentPatients.filter(p => {
+      // Excluir si nombre es 'HC' y apellido es 'LIBERADA'
+      if (p.nombre === 'HC' && p.apellido === 'LIBERADA') return false;
+      // Excluir si tiene HistoriaClinica con contenido pero nombre y apellido vacíos
+      if (p.HistoriaClinica && !p.nombre && !p.apellido) return false;
+      return true;
+    });
+  }, [recentPatients]);
+
   const staffAlerts = useMemo(() => {
     if (!stats?.staff_by_specialty) return [];
     return stats.staff_by_specialty.map(item => ({
@@ -431,7 +442,7 @@ export default function Dashboard() {
             <Typography variant="h6" fontWeight={700}>Últimos Pacientes</Typography>
             <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>Recientemente registrados</Typography>
             <List sx={{ p: 0 }}>
-              {recentPatients.map((p, i) => (
+              {filteredRecentPatients.map((p, i) => (
                 <React.Fragment key={p.id}>
                   <ListItem sx={{ px: 0, py: 1.5 }}>
                     <ListItemAvatar>
@@ -442,7 +453,7 @@ export default function Dashboard() {
                       secondary={<Typography variant="caption" color="text.secondary">DNI: {p.dni || p.documento}</Typography>} 
                     />
                   </ListItem>
-                  {i < recentPatients.length - 1 && <Divider component="li" />}
+                  {i < filteredRecentPatients.length - 1 && <Divider component="li" />}
                 </React.Fragment>
               ))}
             </List>

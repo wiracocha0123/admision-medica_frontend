@@ -59,15 +59,41 @@ export default function Pacientes() {
     }
   }, [formData.etapa_vida]);
 
+  // Detectar si hay filtros locales activos
+  const hasActiveLocalFilters = filterText || filterHC || filterGestante !== 'all' || filterLiberadas !== 'all';
+
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['pacientes', page, filterText, filterHC, filterGestante, filterEstado],
-    queryFn: () => getPacientes(page, filterText, filterHC, filterGestante, filterEstado),
+    queryKey: ['pacientes', hasActiveLocalFilters ? 'all' : page, filterText, filterHC, filterGestante, filterEstado],
+    queryFn: () => {
+      // Si hay filtros locales activos, obtener todos los pacientes de una sola vez
+      if (hasActiveLocalFilters) {
+        return getAllPacientes();
+      }
+      // Si no, usar paginación normal del backend
+      return getPacientes(page, filterText, filterHC, filterGestante, filterEstado);
+    },
     enabled: !!user,
   });
 
   // Con los cambios en el backend, la estructura es directa de Laravel Pagination
-  const rawItems = Array.isArray(data?.data) ? data.data : [];
-  const totalPages = data?.last_page || 1;
+  let rawItems = [];
+  let backendTotalPages = 1;
+
+  if (hasActiveLocalFilters) {
+    // Cuando hay filtros y se obtienen todos los pacientes sin paginación
+    if (Array.isArray(data)) {
+      rawItems = data;
+    } else if (data?.data) {
+      rawItems = Array.isArray(data.data) ? data.data : [];
+    } else if (typeof data === 'object' && data !== null) {
+      // Si data es un objeto pero no tiene .data, intentar extraer items
+      rawItems = Object.values(data).filter(item => typeof item === 'object' && item.id);
+    }
+  } else {
+    // Paginación normal del backend
+    rawItems = Array.isArray(data?.data) ? data.data : [];
+    backendTotalPages = data?.last_page || 1;
+  }
   
   // Aplicar filtros localmente
   const filteredItems = rawItems.filter(p => {
@@ -109,6 +135,17 @@ export default function Pacientes() {
   });
 
   const items = [...filteredItems].sort((a, b) => (b.id || 0) - (a.id || 0));
+
+  // Calcular totalPages basado en filtros
+  const itemsPerPage = 10; // Items mostrados por página (10 items para que haya más paginación)
+  const totalPages = hasActiveLocalFilters 
+    ? Math.ceil(items.length / itemsPerPage) 
+    : backendTotalPages;
+
+  // Si hay filtros activos, hacer paginación local en el frontend
+  const displayItems = hasActiveLocalFilters
+    ? items.slice((page - 1) * itemsPerPage, page * itemsPerPage)
+    : items;
 
   const deleteMutation = useMutation({
     mutationFn: (id) => deletePaciente(id),
@@ -953,7 +990,7 @@ export default function Pacientes() {
           <TableBody>
             {isLoading ? [...Array(5)].map((_, i) => <TableRow key={i}><TableCell colSpan={7}><Skeleton /></TableCell></TableRow>) : 
              items.length === 0 ? <TableRow><TableCell colSpan={7} align="center">No hay pacientes registrados.</TableCell></TableRow> :
-             items.map((p) => (
+             displayItems.map((p) => (
                <TableRow key={p.id} hover>
                  <TableCell>
                     <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>

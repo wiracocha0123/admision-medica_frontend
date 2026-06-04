@@ -14,8 +14,8 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getCitas, createCita, updateCita, deleteCita } from "../../services/citasService";
 import api from "../../api"; // Asegúrate de importar la instancia configurada de api
-import { getPacientes } from "../../services/pacientesService";
-import { getPersonalSalud } from "../../services/personalService";
+import { getPacientes, getAllPacientes } from "../../services/pacientesService";
+import { getPersonalSalud, getAllPersonalSalud } from "../../services/personalService";
 import { getEspecialidades } from "../../services/especialidadesService";
 import { AuthContext } from "../../contexts/AuthContext";
 import Swal from "sweetalert2";
@@ -130,20 +130,18 @@ export default function Citas() {
 
   const { data: pacientesData } = useQuery({
     queryKey: ["pacientes_all"],
-    queryFn: () => getPacientes(1).then(res => {
-      const resp = res?.data || res;
-      return Array.isArray(resp.data) ? resp.data : (Array.isArray(resp) ? resp : []);
-    }),
+    queryFn: () => getAllPacientes(),
     enabled: !!user && openModal,
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: personalData } = useQuery({
     queryKey: ["personal_all"],
-    queryFn: () => getPersonalSalud(1).then(res => {
+    queryFn: () => getAllPersonalSalud().then(res => {
       const resp = res?.data || res;
-      return Array.isArray(resp.data) ? resp.data : (Array.isArray(resp) ? resp : []);
+      return Array.isArray(resp) ? resp : (Array.isArray(resp.data) ? resp.data : []);
     }),
-    enabled: !!user,
+    enabled: !!user && openModal,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -209,6 +207,22 @@ export default function Citas() {
       default: return '#9E9E9E'; // Gris por defecto
     }
   };
+
+  const filteredPacientes = useMemo(() => {
+    const list = Array.isArray(pacientesData) ? pacientesData : [];
+    // Excluir pacientes con historia clínica liberada
+    return list.filter(p => {
+      const hasOnlyHistoria =
+        String(p.HistoriaClinica || '').trim().length > 0 &&
+        !String(p.nombre || '').trim() &&
+        !String(p.apellido || '').trim();
+      const isLiberada = hasOnlyHistoria || (
+        String(p.nombre || '').trim() === 'HC' &&
+        String(p.apellido || '').trim() === 'LIBERADA'
+      );
+      return !isLiberada; // Excluir los liberados
+    });
+  }, [pacientesData]);
 
   const filteredPersonal = useMemo(() => {
     const list = Array.isArray(personalData) ? personalData : [];
@@ -928,9 +942,9 @@ export default function Citas() {
                   <Grid size={12}>
                     <Autocomplete
                       sx={{ minWidth: 230 }}
-                      options={Array.isArray(pacientesData) ? pacientesData : []}
+                      options={filteredPacientes}
                       getOptionLabel={(p) => `${p.nombre || ''} ${p.apellido || ''} — DNI: ${p.dni || p.DNI || p.documento || ''}`}
-                      value={Array.isArray(pacientesData) ? pacientesData.find(p => String(p.id) === String(formData.paciente_id)) || null : null}
+                      value={filteredPacientes.find(p => String(p.id) === String(formData.paciente_id)) || null}
                       disabled={viewMode}
                       onChange={(event, newValue) => {
                         console.log("Paciente seleccionado:", newValue);

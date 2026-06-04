@@ -1,7 +1,10 @@
 import api, { get, post } from '../api';
-export const getCitas = (page = 1, fecha = '') => {
+export const getCitas = (page = 1, fecha = '', search = '', estado = 'todos', especialidad = 'todas') => {
   let url = `/citas?page=${page}`;
   if (fecha) url += `&fecha=${fecha}`;
+  if (search) url += `&search=${encodeURIComponent(search)}`;
+  if (estado !== 'todos') url += `&estado=${estado}`;
+  if (especialidad !== 'todas') url += `&especialidad_id=${especialidad}`;
   return api.get(url).then(r => r.data);
 };
 export const getAllCitas = (fecha = '') => {

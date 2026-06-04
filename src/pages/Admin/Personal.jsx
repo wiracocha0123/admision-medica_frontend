@@ -13,8 +13,8 @@ import {
   FileUpload as ImportIcon, CheckCircle as CheckIcon, Warning as WarningIcon
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getPersonalSalud, deletePersonalSalud, updatePersonalSalud, createPersonalSalud } from '../../services/personalService';
-import { getEspecialidades, createEspecialidad, updateEspecialidad } from '../../services/especialidadesService';
+import { getPersonalSalud, getAllPersonalSalud, deletePersonalSalud, updatePersonalSalud, createPersonalSalud } from '../../services/personalService';
+import { getEspecialidades, getAllEspecialidades, createEspecialidad, updateEspecialidad } from '../../services/especialidadesService';
 import { AuthContext } from '../../contexts/AuthContext';
 import HorarioSemanalDisplay from '../../components/HorarioSemanalDisplay';
 import HorarioSemanalPicker from '../../components/HorarioSemanalPicker';
@@ -55,17 +55,18 @@ export default function Personal() {
   });
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['personal', page],
-    queryFn: () => getPersonalSalud(page),
+    queryKey: ['personal_all'],
+    queryFn: () => getAllPersonalSalud(),
     enabled: !!user,
   });
 
   const { data: especialidadesData } = useQuery({
     queryKey: ['especialidades_all'],
-    queryFn: () => getEspecialidades(1).then(res => {
+    queryFn: () => getAllEspecialidades().then(res => {
       const resp = res?.data || res;
-      // Normalizamos para obtener solo el array de datos
-      return Array.isArray(resp.data) ? resp.data : (Array.isArray(resp) ? resp : []);
+      // Normalizar respuesta para obtener el array de especialidades
+      const dataArray = Array.isArray(resp.data) ? resp.data : (Array.isArray(resp) ? resp : []);
+      return dataArray;
     }),
     staleTime: 5 * 60 * 1000,
     cacheTime: 10 * 60 * 1000,
@@ -76,7 +77,7 @@ export default function Personal() {
   const deleteMutation = useMutation({
     mutationFn: (id) => deletePersonalSalud(id),
     onSuccess: () => {
-      queryClient.invalidateQueries(['personal']);
+      queryClient.invalidateQueries(['personal_all']);
       Swal.fire({
         icon: 'success',
         title: '¡Eliminado!',
@@ -106,7 +107,7 @@ export default function Personal() {
       return createPersonalSalud(payload);
     },
     onSuccess: (data, variables) => {
-      queryClient.invalidateQueries(['personal']);
+      queryClient.invalidateQueries(['personal_all']);
       setEditDialogOpen(false);
       
       console.log("Respuesta del servidor al guardar:", data);
@@ -325,9 +326,10 @@ export default function Personal() {
     });
   };
 
-  // Con los cambios en el backend, la estructura es directa de Laravel Pagination
-  const items = Array.isArray(data?.data) ? data.data : [];
-  const totalPages = data?.last_page || 1;
+  // Con los cambios en el backend, podemos recibir tanto un array completo como paginación
+  const items = Array.isArray(data)
+    ? data
+    : (Array.isArray(data?.data) ? data.data : []);
   
   // Aplicar filtros localmente para una respuesta inmediata
   const filteredItems = items.filter(p => {
@@ -341,6 +343,10 @@ export default function Personal() {
       
     return matchesText && matchesEspecialidad;
   });
+
+  const pageSize = 10;
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / pageSize));
+  const pagedItems = filteredItems.slice((page - 1) * pageSize, page * pageSize);
 
   const handleProcessExcel = (e) => {
     const file = e.target.files[0];
@@ -358,106 +364,232 @@ export default function Personal() {
       let currentSpecialty = null;
       let headerRowIndex = -1;
 
-      // Primero buscamos la fila de cabecera con los números (1, 2, 3...)
-      for (let k = 0; k < Math.min(data.length, 20); k++) {
-        if (String(data[k]?.[5]) === '1' && String(data[k]?.[6]) === '2') {
-          headerRowIndex = k;
-          break;
+      const normalizeText = (value) => String(value || '').trim().toUpperCase();
+      const isBlankRow = (row) => !row || row.every(cell => normalizeText(cell) === '');
+      const rowText = (row) => normalizeText((row || []).join(' '));
+
+      const ignorePatterns = [
+        'PROGRAMACION',
+        'PROGRAMACIÓN',
+        'TURNOS',
+        'MES',
+        'SAN VICENTE',
+        'C.S.'
+      ];
+
+      const shouldIgnoreRow = (row) => {
+        const text = rowText(row);
+        return ignorePatterns.some(pattern => text.includes(pattern));
+      };
+
+      const isHeaderRow = (row) => {
+        if (!row || row.length === 0) return false;
+        const text = rowText(row);
+        // Aceptar variantes comunes de 'N°' y 'NOMBRE Y APELLIDO'
+        const nroTokens = ['N°', 'Nº', 'NRO', 'NO', 'N', 'NÚMERO', 'NUM'];
+        const hasNro = nroTokens.some(t => text.includes(t));
+        const hasName = text.includes('NOMBRE') || text.includes('NOMBRE Y APELLIDO') || text.includes('NOMBRES') || text.includes('APELLIDO');
+        const hasCargo = text.includes('CARGO') || text.includes('PUESTO');
+        return hasNro && hasName && hasCargo;
+      };
+
+      const isSpecialtyRow = (row) => {
+        if (!row || row.length === 0) return false;
+        const text = rowText(row);
+        if (shouldIgnoreRow(row) || isHeaderRow(row)) return false;
+        return text.includes('SERVICIO DE') || text.includes('AREA DE') || text.includes('DPTO') || text.includes('DEPARTAMENTO');
+      };
+
+      const isShiftRow = (row) => {
+        if (!row || row.length === 0) return false;
+        const first = normalizeText(row[0]);
+        const shiftTokens = ['M', 'T', 'N', 'MAÑANA', 'MANANA', 'TARDE', 'NOCHE'];
+        if (shiftTokens.includes(first)) return true;
+
+        const text = rowText(row);
+        return shiftTokens.some(token => text === token || text.startsWith(token + ' '));
+      };
+
+      const parsePersonName = (row) => {
+        const name = normalizeText(row[1] || row[2] || '');
+        if (name && name.split(/\s+/).filter(Boolean).length >= 2) return name;
+        return normalizeText(row[2] || row[3] || row[1] || '');
+      };
+
+      const findHeaderRowIndex = (rows) => {
+        for (let k = 0; k < Math.min(rows.length, 40); k++) {
+          const row = rows[k];
+          if (!row) continue;
+          if (isHeaderRow(row)) return k;
+          const normalized = row.map(cell => normalizeText(cell));
+          const containsNumbers = normalized.filter(cell => ['1','2','3','4','5','6','7','8','9'].includes(cell));
+          if (containsNumbers.length >= 3 && rowText(row).includes('N°')) return k;
+        }
+        return -1;
+      };
+
+      const dayColumns = (headerRow) => {
+        if (!headerRow) return [];
+        const cols = [];
+        for (let idx = 0; idx < headerRow.length; idx++) {
+          const raw = String(headerRow[idx] || '').trim();
+          // extraer primer número disponible (acepta '1', '1.', 'DIA 1', '01')
+          const m = raw.match(/(\d{1,2})/);
+          if (m) {
+            const n = parseInt(m[1], 10);
+            if (n >= 1 && n <= 31) cols.push(idx);
+          }
+        }
+        return cols;
+      };
+
+      const findDayIndexesFallback = (rows) => {
+        // Busca cualquier fila con >=3 celdas numéricas (p. ej. 1..30) y devuelve sus índices de columna
+        for (let k = 0; k < Math.min(rows.length, 60); k++) {
+          const row = rows[k] || [];
+          const cols = [];
+          for (let idx = 0; idx < row.length; idx++) {
+            const raw = String(row[idx] || '').trim();
+            const m = raw.match(/(\d{1,2})/);
+            if (m) {
+              const n = parseInt(m[1], 10);
+              if (n >= 1 && n <= 31) cols.push(idx);
+            }
+          }
+          if (cols.length >= 3) {
+            console.warn('[IMPORT DEBUG] findDayIndexesFallback used at row', k, 'cols=', cols);
+            return cols;
+          }
+        }
+        return [];
+      };
+
+      headerRowIndex = findHeaderRowIndex(data);
+      const headerRow = headerRowIndex !== -1 ? data[headerRowIndex] : null;
+      let dayIndexes = dayColumns(headerRow);
+      if ((!dayIndexes || dayIndexes.length === 0) && data && data.length > 0) {
+        // fallback tolerante si no se detectó la fila de cabecera
+        const fb = findDayIndexesFallback(data);
+        if (fb && fb.length > 0) {
+          dayIndexes = fb;
+          console.log('[IMPORT DEBUG] fallback dayIndexes applied =', dayIndexes);
         }
       }
+      const startIndex = headerRowIndex !== -1 ? headerRowIndex + 1 : 0;
 
-      for (let i = 0; i < data.length; i++) {
+      // DEBUG: información para diagnosticar detección de columnas de día
+      console.log('[IMPORT DEBUG] headerRowIndex =', headerRowIndex);
+      console.log('[IMPORT DEBUG] headerRow (raw) =', headerRow);
+      console.log('[IMPORT DEBUG] dayIndexes =', dayIndexes);
+
+      for (let i = startIndex; i < data.length; i++) {
         const row = data[i];
-        if (!row || row.length === 0) continue;
+        if (isBlankRow(row)) continue;
+        if (shouldIgnoreRow(row)) continue;
+        if (isHeaderRow(row)) continue;
 
-        const possibleHeader = String(row[1] || row[0] || '').toUpperCase();
-        
-        // Ignorar encabezados genéricos como el título del documento
-        if (possibleHeader.includes('PROGRAMACION DE TURNOS') || possibleHeader.includes('C.S. SAN VICENTE') || possibleHeader.includes('TOTAL')) {
+        if (isSpecialtyRow(row)) {
+          const name = rowText(row)
+            .replace('SERVICIO DE', '')
+            .replace('AREA DE', '')
+            .replace('SERVICIO', '')
+            .replace('AREA', '')
+            .replace('DPTO.', '')
+            .replace('DEPARTAMENTO DE', '')
+            .replace('DEPARTAMENTO', '')
+            .trim();
+
+          currentSpecialty = { name: name || 'SIN ESPECIALIDAD', staff: [] };
+          entities.push(currentSpecialty);
           continue;
         }
 
-        // Detectar cambio de Especialidad
-        if (possibleHeader.includes('SERVICIO DE') || possibleHeader.includes('AREA DE') || (row.length < 7 && row[0]?.length > 10)) {
-          let name = possibleHeader.replace('SERVICIO DE', '').replace('AREA DE', '').trim();
-          if (name.length > 3) {
-            currentSpecialty = { name, staff: [] };
-            entities.push(currentSpecialty);
-          }
-          continue;
+        const order = parseInt(String(row[0] || '').replace(/[.)]/g, '').trim());
+        if (isNaN(order)) continue;
+        if (!currentSpecialty) {
+          currentSpecialty = { name: 'SIN ESPECIALIDAD', staff: [] };
+          entities.push(currentSpecialty);
         }
 
-        // Si tenemos una especialidad, buscar personal
-        const possibleId = parseInt(row[0]);
-        if (!isNaN(possibleId) && currentSpecialty && row[1]) {
-          const nombres_completos = String(row[1]).trim();
-          
-          const rowM = row;
-          const rowT = data[i+1] || [];
-          const rowN = data[i+2] || [];
+        const nombres_completos = parsePersonName(row);
+        if (!nombres_completos || nombres_completos.length <= 3) continue;
 
-          const monthlySchedule = [];
-          
-          // Determinamos cuántos días tiene el mes basándonos en la cabecera encontrada
-          let activeDaysInMonth = 31; 
-          if (headerRowIndex !== -1) {
-            const hRow = data[headerRowIndex];
-            for (let d = 1; d <= 31; d++) {
-              const val = String(hRow[d + 4] || '').toUpperCase();
-              if (!val || val.includes('TOTAL')) {
-                activeDaysInMonth = d - 1;
-                break;
-              }
-            }
-          }
+        const rowT = data[i + 1] || [];
+        const rowN = data[i + 2] || [];
+        const hasT = isShiftRow(rowT);
+        const hasN = isShiftRow(rowN);
+        const rowM = row;
+        const rowTData = hasT ? rowT : [];
+        const rowNData = hasT && hasN ? rowN : [];
 
-          for (let d = 1; d <= 31; d++) {
-            const colIndex = d + 4;
-            let valM = '', valT = '', valN = '';
-            
-            if (d <= activeDaysInMonth) {
-              valM = String(rowM[colIndex] || '').trim();
-              valT = String(rowT[colIndex] || '').trim();
-              valN = String(rowN[colIndex] || '').trim();
-            }
+        const monthlySchedule = dayIndexes.map((colIndex, idx) => ({
+          dia_numero: idx + 1,
+          turno_m: String(rowM[colIndex] || '').trim() || null,
+          turno_t: (hasT ? String(rowTData[colIndex] || '').trim() : '') || null,
+          turno_n: (hasN ? String(rowNData[colIndex] || '').trim() : '') || null
+        }));
 
-            monthlySchedule.push({
-              dia_numero: d,
-              turno_m: valM || null,
-              turno_t: valT || null,
-              turno_n: valN || null
-            });
-          }
-
-          const parts = nombres_completos.split(' ');
-          let apellidos = '', nombres = '';
-          if (parts.length >= 3) {
-            apellidos = `${parts[parts.length - 2]} ${parts[parts.length - 1]}`;
-            nombres = parts.slice(0, -2).join(' ');
+        // DEBUG: si no se detectaron columnas de día o el horario está vacío, registrar muestra
+        try {
+          if (!dayIndexes || dayIndexes.length === 0) {
+            console.warn('[IMPORT DEBUG] No se detectaron columnas de día. headerRowIndex=', headerRowIndex);
           } else {
-            apellidos = parts[parts.length - 1];
-            nombres = parts[0];
+            const filled = monthlySchedule.filter(d => d.turno_m || d.turno_t || d.turno_n).length;
+            if (monthlySchedule.length < 30 || filled === 0) {
+              console.log('[IMPORT DEBUG] Persona:', nombres_completos, 'monthlySchedule.length=', monthlySchedule.length, 'filledShifts=', filled, 'sample=', monthlySchedule.slice(0, 6));
+            }
           }
+        } catch (dbgErr) {
+          console.error('[IMPORT DEBUG] error al evaluar monthlySchedule debug', dbgErr);
+        }
 
-          currentSpecialty.staff.push({
-            nombres,
-            apellidos,
-            horario_mensual: monthlySchedule
-          });
+        const words = nombres_completos.split(/\s+/).filter(Boolean);
+        let apellidos = '', nombres = '';
+        if (words.length >= 4) {
+          apellidos = `${words[words.length - 2]} ${words[words.length - 1]}`;
+          nombres = words.slice(0, -2).join(' ');
+        } else if (words.length === 3) {
+          apellidos = `${words[1]} ${words[2]}`;
+          nombres = words[0];
+        } else if (words.length === 2) {
+          apellidos = words[1];
+          nombres = words[0];
+        } else {
+          apellidos = words[0];
+          nombres = 'PERSONAL';
+        }
 
-          i += 2; // Saltamos las filas T y N
+        currentSpecialty.staff.push({
+          nombres: nombres.toUpperCase(),
+          apellidos: apellidos.toUpperCase(),
+          horario_mensual: monthlySchedule
+        });
+
+        if (hasT && hasN) {
+          i += 2;
+        } else if (hasT) {
+          i += 1;
         }
       }
 
-      // Comparar con especialidades existentes
-      const results = entities.map(entity => {
+      const mergedEntities = [];
+      for (const entity of entities) {
+        const existing = mergedEntities.find(e => e.name === entity.name);
+        if (existing) {
+          existing.staff.push(...entity.staff);
+        } else {
+          mergedEntities.push({ ...entity, staff: [...entity.staff] });
+        }
+      }
+
+      const results = mergedEntities.map(entity => {
         const existing = especialidades.find(e => e.especialidad.toUpperCase().includes(entity.name.toUpperCase()));
         return {
           ...entity,
           selected: true,
           conflict: !!existing,
           existingId: existing?.id,
-          decision: existing ? 'update' : 'create' // update personal inside, create specialty
+          decision: existing ? 'update' : 'create'
         };
       });
 
@@ -472,6 +604,7 @@ export default function Personal() {
     setIsProcessingImport(true);
     let successCount = 0;
     let errorCount = 0;
+    let failedNames = [];
 
     // Mostrar modal de progreso con Swal
     Swal.fire({
@@ -491,15 +624,14 @@ export default function Personal() {
         if (!specialtyId || entity.decision === 'rename') {
           // Crear nueva especialidad
           const respEsp = await createEspecialidad({ 
-            especialidad: entity.name,
+            especialidad: entity.name.toUpperCase(),
             UPS: entity.name.substring(0, 5).toUpperCase() 
           });
-          // Aseguramos capturar el ID correctamente (Laravel puede devolverlo en root o dentro de data)
           specialtyId = respEsp?.id || respEsp?.data?.id;
         }
 
         if (!specialtyId) {
-          console.error("No se pudo obtener el ID de la especialidad para:", entity.name);
+          failedNames.push(`Especialidad: ${entity.name} (Error ID)`);
           errorCount += entity.staff.length;
           continue;
         }
@@ -509,37 +641,57 @@ export default function Personal() {
         for (let s of entity.staff) {
           try {
             const tempDni = String(tempDniBase++);
-            
+
+            // Asegurar que `horario_mensual` tenga al menos 30 entradas requeridas por el backend
+            const horario = Array.isArray(s.horario_mensual) ? s.horario_mensual.slice() : [];
+            const requiredDays = 30;
+            if (horario.length < requiredDays) {
+              for (let dd = horario.length + 1; dd <= requiredDays; dd++) {
+                horario.push({
+                  dia_numero: dd,
+                  turno_m: null,
+                  turno_t: null,
+                  turno_n: null
+                });
+              }
+            }
+
             const payload = {
               nombres: s.nombres,
               apellidos: s.apellidos,
-              especialidad_id: specialtyId, // AHORA SÍ O SÍ TIENE VALOR
+              especialidad_id: specialtyId,
               dni: tempDni,
               email: `${s.nombres.toLowerCase().replace(/[^a-z]/g, '').substring(0, 5)}${tempDni.substring(4)}@hosp.gob.pe`,
               telefono: '900000000',
               horario_semanal: [],
-              horario_mensual: s.horario_mensual || []
+              horario_mensual: horario
             };
 
             await createPersonalSalud(payload);
             successCount++;
-            
-            // Actualizar mensaje de progreso
-            Swal.getHtmlContainer().querySelector('b').textContent = `${successCount}`;
+
+            if (Swal.isVisible()) {
+              Swal.getHtmlContainer().querySelector('b').textContent = `${successCount}`;
+            }
           } catch (e) {
-            console.error("Error detallado en fila:", s.nombres, e.response?.data || e.message);
+            console.error("Error en fila:", s.nombres, e.response?.data || e.message);
             errorCount++;
+            failedNames.push(`${s.nombres} ${s.apellidos} (${e.response?.data?.message || 'Error técnico'})`);
           }
         }
       }
 
       Swal.fire({
-        icon: 'success',
+        icon: successCount > 0 ? 'success' : 'info',
         title: 'Importación Finalizada',
-        text: `Se procesaron ${successCount} registros con éxito. Errores: ${errorCount}`,
+        html: `<b>Éxitos:</b> ${successCount}<br/><b>Fallidos:</b> ${errorCount}`,
+        footer: failedNames.length > 0 ? 
+          `<div style="max-height: 100px; overflow-y: auto; font-size: 10px; text-align: left; width: 100%">
+            <b>Errores:</b><br/>${failedNames.join('<br/>')}
+           </div>` : null,
         confirmButtonColor: '#3085d6'
       });
-      queryClient.invalidateQueries(['personal']);
+      queryClient.invalidateQueries(['personal_all']);
       setImportResults([]);
       setImportDialogOpen(false);
     } catch (error) {
@@ -585,7 +737,7 @@ export default function Personal() {
           <Button 
             variant="outlined" 
             startIcon={<RefreshIcon />} 
-            onClick={() => queryClient.invalidateQueries(['personal'])}
+            onClick={() => queryClient.invalidateQueries(['personal_all'])}
           >
             Actualizar
           </Button>
@@ -645,11 +797,22 @@ export default function Personal() {
                   ),
                 }
               }}
-              sx={{ bgcolor: 'white', minWidth: 220 }}
+              sx={{ bgcolor: 'white', minWidth: 220, maxWidth: 320, width: '100%' }}
+              SelectProps={{
+                MenuProps: {
+                  PaperProps: {
+                    sx: { maxWidth: 420 }
+                  }
+                }
+              }}
             >
               <MenuItem value="all">Todas</MenuItem>
               {especialidades.map((esp) => (
-                <MenuItem key={esp.id} value={esp.id}>
+                <MenuItem
+                  key={esp.id}
+                  value={esp.id}
+                  sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 400 }}
+                >
                   {esp.especialidad} {esp.UPS ? `(${esp.UPS})` : ''}
                 </MenuItem>
               ))}
@@ -689,7 +852,7 @@ export default function Personal() {
           <TableBody>
             {isLoading ? [...Array(5)].map((_, i) => <TableRow key={i}><TableCell colSpan={7}><Skeleton /></TableCell></TableRow>) : 
              filteredItems.length === 0 ? <TableRow><TableCell colSpan={7} align="center">No hay personal registrado.</TableCell></TableRow> :
-             filteredItems.map((p) => {
+             pagedItems.map((p) => {
                return (
                  <TableRow key={p.id} hover>
                    <TableCell>
@@ -703,7 +866,7 @@ export default function Personal() {
                     <TableCell>{p.dni || '-'}</TableCell>
                    <TableCell>{p.telefono || '-'}</TableCell>
                    <TableCell>{p.email || '-'}</TableCell>
-                   <TableCell><Chip label={p.especialidad?.UPS || 'Sin asignar'} size="small" /></TableCell>
+                   <TableCell><Chip label={p.especialidad?.especialidad || 'Sin asignar'} size="small" /></TableCell>
                    <TableCell>
                       <Stack spacing={1}>
                         {p.horario_mensual && (Array.isArray(p.horario_mensual) ? p.horario_mensual.length > 0 : String(p.horario_mensual).length > 2) ? (

@@ -9,7 +9,7 @@ import {
   Refresh as RefreshIcon, CalendarMonth as CalendarIcon, Edit as EditIcon, 
   Delete as DeleteIcon, Visibility as VisibilityIcon, Add as AddIcon,
   Search as SearchIcon, FilterList as FilterIcon, Settings as SettingsIcon,
-  PictureAsPdf as PdfIcon
+  PictureAsPdf as PdfIcon, Clear as ClearIcon
 } from "@mui/icons-material";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getCitas, createCita, updateCita, deleteCita } from "../../services/citasService";
@@ -105,9 +105,14 @@ export default function Citas() {
   // Usamos una variable local para el estado de bloqueo
   const isLocked = hasCitasHoyServer || false;
 
+  // Efecto para reiniciar a la página 1 cuando cambian los filtros
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterEstado, filterFecha, filterEspecialidad]);
+
   const { data: citasData, isLoading, error, refetch, isFetching } = useQuery({
-    queryKey: ["citas", currentPage, filterFecha],
-    queryFn: () => getCitas(currentPage, filterFecha),
+    queryKey: ["citas", currentPage, filterFecha, searchTerm, filterEstado, filterEspecialidad],
+    queryFn: () => getCitas(currentPage, filterFecha, searchTerm, filterEstado, filterEspecialidad),
     enabled: !!user,
   });
 
@@ -583,25 +588,9 @@ export default function Citas() {
   };
 
   // Con los cambios en el backend, la estructura es directa de Laravel Pagination
-  const allItems = Array.isArray(citasData?.data) ? citasData.data : [];
+  const items = Array.isArray(citasData?.data) ? citasData.data : [];
   const totalPages = citasData?.last_page || 1;
   
-  // Filtrado local (Considerando que el backend no soporta filtros por ahora)
-  const items = allItems.filter(cita => {
-    const matchesSearch = 
-      (cita.paciente?.nombre?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (cita.paciente?.apellido?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (cita.paciente?.dni?.includes(searchTerm));
-    
-    const matchesEstado = filterEstado === "todos" || cita.estado?.toLowerCase() === filterEstado.toLowerCase();
-    
-    const matchesFecha = !filterFecha || (cita.fecha && cita.fecha.startsWith(filterFecha));
-
-    const matchesEspecialidad = filterEspecialidad === "todas" || cita.especialidad_id?.toString() === filterEspecialidad.toString();
-
-    return matchesSearch && matchesEstado && matchesFecha && matchesEspecialidad;
-  });
-
   const getEstadoColor = (estado) => {
     switch (estado?.toString().toLowerCase()) {
       case "pendiente": return "warning";
@@ -688,7 +677,22 @@ export default function Citas() {
               label="Filtrar por Fecha"
               value={filterFecha}
               onChange={(e) => setFilterFecha(e.target.value)}
-              slotProps={{ inputLabel: { shrink: true } }}
+              slotProps={{ 
+                inputLabel: { shrink: true },
+                input: {
+                  endAdornment: filterFecha && (
+                    <InputAdornment position="end">
+                      <IconButton
+                        size="small"
+                        onClick={() => setFilterFecha("")}
+                        edge="end"
+                      >
+                        <ClearIcon fontSize="small" />
+                      </IconButton>
+                    </InputAdornment>
+                  )
+                }
+              }}
             />
           </Grid>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>

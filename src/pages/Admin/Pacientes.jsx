@@ -9,7 +9,7 @@ import {
 import { 
   Edit as EditIcon, Delete as DeleteIcon, Add as AddIcon, Refresh as RefreshIcon,
   People as PeopleIcon, Search as SearchIcon, FilterList as FilterIcon,
-  FileUpload as ImportIcon, Archive as ArchiveIcon, History as HistoryIcon
+  FileUpload as ImportIcon, Archive as ArchiveIcon, History as HistoryIcon, Replay as ReplayIcon
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getPacientes, createPaciente, updatePaciente, deletePaciente, getNextHC, getAllPacientes } from '../../services/pacientesService';
@@ -26,6 +26,7 @@ export default function Pacientes() {
   const [filterText, setFilterText] = useState('');
   const [filterHC, setFilterHC] = useState('');
   const [filterGestante, setFilterGestante] = useState('all');
+  const [filterLiberadas, setFilterLiberadas] = useState('all');
   const [filterEstado, setFilterEstado] = useState('Activo'); // Nuevo filtro de estado por defecto en Activo
 
   // Estados para modales
@@ -90,8 +91,21 @@ export default function Pacientes() {
       filterEstado === 'todos' || 
       (filterEstado === 'Activo' && (p.estado === 'Activo' || !p.estado)) || 
       (p.estado === filterEstado);
+
+    const hasOnlyHistoria =
+      String(p.HistoriaClinica || '').trim().length > 0 &&
+      !String(p.nombre || '').trim() &&
+      !String(p.apellido || '').trim();
+    const isLiberada = hasOnlyHistoria || (
+      String(p.nombre || '').trim() === 'HC' &&
+      String(p.apellido || '').trim() === 'LIBERADA'
+    );
+    const matchesLiberadas =
+      filterLiberadas === 'all' ||
+      (filterLiberadas === 'liberadas' && isLiberada) ||
+      (filterLiberadas === 'no-liberadas' && !isLiberada);
       
-    return matchesText && matchesHC && matchesGestante && matchesEstado;
+    return matchesText && matchesHC && matchesGestante && matchesEstado && matchesLiberadas;
   });
 
   const items = [...filteredItems].sort((a, b) => (b.id || 0) - (a.id || 0));
@@ -187,12 +201,31 @@ export default function Pacientes() {
 
   const handleOpenEdit = (item = null) => {
     if (item) {
+      let docType = item.tipo_documento || 'DNI';
+      
+      // Normalizar tipo_documento: mapear valores largos del backend a abreviaturas
+      if (docType.toUpperCase().includes('EXTRANJERÍA') || docType.toUpperCase() === 'CE') {
+        docType = 'CE';
+      } else if (docType.toUpperCase().includes('DNI') || docType.toUpperCase() === 'DNI') {
+        docType = 'DNI';
+      }
+      // Si no coincide con nada, mantener como está
+      
+      let dniValue = item.dni || '';
+      
+      // Normalizar DNI según tipo de documento: truncar si es muy largo
+      if (docType === 'DNI' && String(dniValue).length > 8) {
+        dniValue = String(dniValue).slice(0, 8);
+      } else if (docType === 'CE' && String(dniValue).length > 9) {
+        dniValue = String(dniValue).slice(0, 9);
+      }
+      
       setFormData({
         id: item.id,
         nombre: item.nombre || '',
         apellido: item.apellido || '',
-        tipo_documento: item.tipo_documento || 'DNI',
-        dni: item.dni || '',
+        tipo_documento: docType,
+        dni: dniValue,
         HistoriaClinica: item.HistoriaClinica || '',
         telefono: item.telefono || '',
         email: item.email || '',
@@ -269,51 +302,105 @@ export default function Pacientes() {
       return;
     }
     
-    if (formData.tipo_documento === 'DNI' && (!formData.dni || String(formData.dni).length !== 8)) {
-      Swal.fire({
-        icon: 'warning',
-        title: 'DNI inválido',
-        text: 'El DNI debe tener exactamente 8 dígitos.',
-        confirmButtonColor: '#3085d6',
-        heightAuto: false
-      });
-      return;
-    }
-
-    if (formData.tipo_documento !== 'DNI' && (!formData.dni || String(formData.dni).length < 5 || String(formData.dni).length > 15)) {
-      Swal.fire({
-        icon: 'warning',
-        title: 'Documento inválido',
-        text: `El número de ${formData.tipo_documento} debe tener entre 5 y 15 caracteres.`,
-        confirmButtonColor: '#3085d6',
-        heightAuto: false
-      });
-      return;
+    const rawDni = String(formData.dni || '').trim();
+    if (rawDni) {
+      if (formData.tipo_documento === 'DNI') {
+        if (rawDni.length !== 8) {
+          Swal.fire({
+            icon: 'warning',
+            title: 'DNI inválido',
+            text: 'El DNI debe tener exactamente 8 dígitos.',
+            confirmButtonColor: '#3085d6',
+            heightAuto: false
+          });
+          return;
+        }
+      } else if (formData.tipo_documento === 'CE') {
+        if (rawDni.length !== 9) {
+          Swal.fire({
+            icon: 'warning',
+            title: 'Número CE inválido',
+            text: 'El número de CE debe tener exactamente 9 dígitos.',
+            confirmButtonColor: '#3085d6',
+            heightAuto: false
+          });
+          return;
+        }
+      } else {
+        if (rawDni.length < 5 || rawDni.length > 15) {
+          Swal.fire({
+            icon: 'warning',
+            title: 'Documento inválido',
+            text: `El número de ${formData.tipo_documento} debe tener entre 5 y 15 caracteres.`,
+            confirmButtonColor: '#3085d6',
+            heightAuto: false
+          });
+          return;
+        }
+      }
     }
 
     if (formData.etapa_vida === 'Gestante' && !formData.detalle_gestante) {
       Swal.fire({
         icon: 'warning',
         title: 'Detalle requerido',
-        text: 'Debe seleccionar un nivel de gestación (A1, A2 o A3).',
+        text: 'Debe ingresar el detalle de la gestación.',
         confirmButtonColor: '#3085d6',
         heightAuto: false
       });
       return;
     }
 
-    if (!formData.direccion || !formData.direccion.trim()) {
-      Swal.fire({
-        icon: 'warning',
-        title: 'Campo requerido',
-        text: 'La dirección es obligatoria.',
-        confirmButtonColor: '#3085d6',
-        heightAuto: false
-      });
-      return;
+    // Validar email solo si tiene contenido (debe contener @)
+    if (formData.email && String(formData.email).trim()) {
+      if (!String(formData.email).includes('@')) {
+        Swal.fire({
+          icon: 'warning',
+          title: 'Email inválido',
+          text: 'El correo debe contener un "@". Si no deseas agregar correo, déjalo en blanco.',
+          confirmButtonColor: '#3085d6',
+          heightAuto: false
+        });
+        return;
+      }
     }
 
-    saveMutation.mutate(formData);
+    // Quitar validación estricta de dirección (se maneja como nullable en backend)
+    // Rellenar valores por defecto para evitar campos en blanco en la base de datos
+    // IMPORTANTE: email se envía como null cuando está vacío (para que el backend no lo valide)
+    // Normalizar DNI según tipo de documento antes de enviar (truncar si excede límite)
+    let dniToSend = formData.dni ? String(formData.dni).trim() : '';
+    if (formData.tipo_documento === 'DNI' && dniToSend.length > 8) {
+      dniToSend = dniToSend.slice(0, 8);
+    } else if (formData.tipo_documento === 'CE' && dniToSend.length > 9) {
+      dniToSend = dniToSend.slice(0, 9);
+    }
+    
+    // Normalizar tipo_documento a abreviatura antes de enviar
+    let docTypeToSend = formData.tipo_documento || 'DNI';
+    if (docTypeToSend.toUpperCase().includes('EXTRANJERÍA') || docTypeToSend.toUpperCase() === 'CE') {
+      docTypeToSend = 'CE';
+    } else if (docTypeToSend.toUpperCase().includes('DNI') || docTypeToSend.toUpperCase() === 'DNI') {
+      docTypeToSend = 'DNI';
+    }
+    
+    const payload = {
+      ...formData,
+      dni: dniToSend || '',
+      tipo_documento: docTypeToSend,
+      telefono: formData.telefono && String(formData.telefono).trim() ? formData.telefono : 'N/A',
+      direccion: formData.direccion && String(formData.direccion).trim() ? formData.direccion : 'N/A',
+      email: formData.email && String(formData.email).trim() ? formData.email : null
+    };
+
+    // DEBUG: Log para verificar qué se está enviando
+    console.log('[PACIENTES DEBUG] Payload a enviar:', {
+      dni: payload.dni,
+      dni_length: payload.dni ? payload.dni.length : 0,
+      tipo_documento: payload.tipo_documento
+    });
+
+    saveMutation.mutate(payload);
   };
 
   const handleImportExcel = (e) => {
@@ -524,28 +611,153 @@ export default function Pacientes() {
       denyButtonText: 'Liberar y Asignar a Nuevo',
       cancelButtonText: 'Cancelar',
       heightAuto: false
-    }).then((result) => {
+    }).then(async (result) => {
       if (result.isConfirmed || result.isDenied) {
-        const payload = {
-          ...paciente,
+        const updatePayload = {
           HistoriaClinica: `${originalHC}-OLD`,
           estado: 'Archivado'
         };
 
+        if (paciente.dni != null && String(paciente.dni).trim() !== '') {
+          updatePayload.dni = String(paciente.dni).trim();
+        }
+        if (paciente.tipo_documento != null && String(paciente.tipo_documento).trim() !== '') {
+          updatePayload.tipo_documento = String(paciente.tipo_documento).trim();
+        }
+
         const isAssigningNew = result.isDenied;
 
-        saveMutation.mutate(payload, {
-          onSuccess: () => {
-            if (isAssigningNew) {
-              // Pequeña espera para que cierre el modal anterior si fuera necesario
-              setTimeout(() => {
-                handleOpenCreate(originalHC);
-              }, 500);
-            }
+        try {
+          await updatePaciente(paciente.id, updatePayload);
+          queryClient.invalidateQueries(['pacientes']);
+
+          if (isAssigningNew) {
+            // El paciente se archivó y la HC quedó libre para asignar de inmediato.
+            setTimeout(() => {
+              handleOpenCreate(originalHC);
+            }, 500);
+          } else {
+            const placeholderPayload = {
+              nombre: 'HC',
+              apellido: 'LIBERADA',
+              tipo_documento: '',
+              dni: '',
+              HistoriaClinica: originalHC,
+              telefono: null,
+              email: null,
+              direccion: null,
+              gestante: false,
+              etapa_vida: null,
+              detalle_gestante: null,
+              estado: 'Activo'
+            };
+
+            await createPaciente(placeholderPayload);
+            queryClient.invalidateQueries(['pacientes']);
+
+            Swal.fire({
+              icon: 'success',
+              title: 'HC liberada',
+              text: `La historia clínica ${originalHC} quedó libre y se creó el registro de HC liberada.`,
+              timer: 2000,
+              showConfirmButton: false,
+              heightAuto: false
+            });
           }
-        });
+        } catch (err) {
+          console.error('Error al liberar HC:', err.response?.data || err.message || err);
+          const serverError = err.response?.data?.message ||
+            (err.response?.data?.errors ? JSON.stringify(err.response.data.errors) : null) ||
+            err.message ||
+            'Ocurrió un problema al archivar el paciente o liberar la historia clínica.';
+
+          Swal.fire({
+            icon: 'error',
+            title: 'Error al liberar HC',
+            text: serverError,
+            confirmButtonColor: '#3085d6',
+            heightAuto: false
+          });
+        }
       }
     });
+  };
+
+  const getAvailableReleasedHCs = async () => {
+    try {
+      const all = await getAllPacientes();
+      return (Array.isArray(all.data) ? all.data : all).filter((p) => {
+        const nombre = String(p.nombre || '').trim().toUpperCase();
+        const apellido = String(p.apellido || '').trim().toUpperCase();
+        return (
+          String(p.HistoriaClinica || '').trim() &&
+          ((nombre === 'HC' && apellido === 'LIBERADA') ||
+            (!nombre && !apellido))
+        );
+      }).sort((a, b) => {
+        const aNum = Number(String(a.HistoriaClinica || '').replace(/\D/g, '')) || 0;
+        const bNum = Number(String(b.HistoriaClinica || '').replace(/\D/g, '')) || 0;
+        if (aNum !== bNum) return aNum - bNum;
+        return String(a.HistoriaClinica || '').localeCompare(String(b.HistoriaClinica || ''));
+      });
+    } catch (err) {
+      console.error('Error al buscar HC liberadas:', err);
+      return [];
+    }
+  };
+
+  const handleReactivateWithAvailableHC = async (paciente) => {
+    Swal.fire({
+      title: 'Buscando HC disponible...',
+      html: 'Espere un momento mientras buscamos historias clínicas liberadas.',
+      allowOutsideClick: false,
+      didOpen: () => Swal.showLoading(),
+      heightAuto: false
+    });
+
+    try {
+      const available = await getAvailableReleasedHCs();
+      let assignedHC = null;
+
+      if (available.length > 0) {
+        const candidate = available[0];
+        assignedHC = candidate.HistoriaClinica;
+        await deletePaciente(candidate.id);
+      } else {
+        const nextHCResponse = await getNextHC();
+        assignedHC = nextHCResponse.data?.next_hc || nextHCResponse.next_hc || 'H-1';
+      }
+
+      await updatePaciente(paciente.id, {
+        HistoriaClinica: assignedHC,
+        estado: 'Activo'
+      });
+
+      queryClient.invalidateQueries(['pacientes']);
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Paciente reactivado',
+        text: `Se reasignó la historia clínica ${assignedHC} y el paciente volvió a Activo.`,
+        timer: 2200,
+        showConfirmButton: false,
+        heightAuto: false
+      });
+    } catch (err) {
+      console.error('Error al reactivar paciente:', err);
+      const serverError = err.response?.data?.message ||
+        (err.response?.data?.errors ? JSON.stringify(err.response.data.errors) : null) ||
+        err.message ||
+        'Ocurrió un problema al reactivar el paciente.';
+
+      Swal.fire({
+        icon: 'error',
+        title: 'No se pudo reactivar',
+        text: serverError,
+        confirmButtonColor: '#3085d6',
+        heightAuto: false
+      });
+    }
   };
 
   return (
@@ -581,7 +793,7 @@ export default function Pacientes() {
           <Button 
             variant="contained" 
             startIcon={<AddIcon />} 
-            onClick={handleOpenCreate}
+            onClick={() => handleOpenCreate()}
             sx={{ borderRadius: 2, px: 3 }}
           >
             Nuevo Paciente
@@ -667,6 +879,24 @@ export default function Pacientes() {
               select
               fullWidth
               size="small"
+              label="HC Liberadas"
+              value={filterLiberadas}
+              onChange={(e) => {
+                setFilterLiberadas(e.target.value);
+                setPage(1);
+              }}
+              sx={{ bgcolor: 'white' }}
+            >
+              <MenuItem value="all">Todas las historias</MenuItem>
+              <MenuItem value="liberadas">Solo HC liberadas (solo historia clínica)</MenuItem>
+              <MenuItem value="no-liberadas">No liberadas</MenuItem>
+            </TextField>
+          </Grid>
+          <Grid size={{ xs: 12, md: 3 }}>
+            <TextField
+              select
+              fullWidth
+              size="small"
               label="Estado"
               value={filterEstado}
               onChange={(e) => {
@@ -688,6 +918,7 @@ export default function Pacientes() {
                 setFilterText(''); 
                 setFilterGestante('all'); 
                 setFilterHC(''); 
+                setFilterLiberadas('all');
                 setFilterEstado('Activo');
                 setPage(1); 
               }}
@@ -788,6 +1019,13 @@ export default function Pacientes() {
                           </IconButton>
                         </Tooltip>
                       )}
+                      {p.estado === 'Archivado' && (
+                        <Tooltip title="Reactivar con HC disponible">
+                          <IconButton size="small" color="success" onClick={() => handleReactivateWithAvailableHC(p)}>
+                            <ReplayIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
                       <Tooltip title="Editar">
                         <IconButton size="small" color="primary" onClick={() => handleOpenEdit(p)}>
                           <EditIcon fontSize="small" />
@@ -842,11 +1080,21 @@ export default function Pacientes() {
                     label="Tipo de Doc."
                     fullWidth
                     value={formData.tipo_documento}
-                    onChange={(e) => setFormData({...formData, tipo_documento: e.target.value})}
+                    onChange={(e) => {
+                      const newDocType = e.target.value;
+                      // Normalizar documento cuando cambia el tipo
+                      let normalizedDni = formData.dni ? String(formData.dni).trim() : '';
+                      if (newDocType === 'DNI' && normalizedDni.length > 8) {
+                        normalizedDni = normalizedDni.slice(0, 8);
+                      } else if (newDocType === 'CE' && normalizedDni.length > 9) {
+                        normalizedDni = normalizedDni.slice(0, 9);
+                      }
+                      setFormData({...formData, tipo_documento: newDocType, dni: normalizedDni});
+                    }}
                   >
                     <MenuItem value="DNI">DNI</MenuItem>
                     <MenuItem value="CE">CE (Extranjería)</MenuItem>
-                    <MenuItem value="Pasaporte">Pasaporte</MenuItem>
+                    
                   </TextField>
                 </Grid>
                 <Grid size={8}>
@@ -856,19 +1104,16 @@ export default function Pacientes() {
                     value={formData.dni} 
                     onChange={(e) => {
                       const val = e.target.value;
-                      // Mantenemos una longitud razonable en el front (ej. 15), 
-                      // la base de datos es la que restringirá el máximo a 8 si no se ha migrado.
-                      if (val.length <= 15) {
-                        if (formData.tipo_documento === 'DNI') {
-                          if (/^\d*$/.test(val) && val.length <= 8) {
-                            setFormData({...formData, dni: val});
-                          }
-                        } else {
-                          setFormData({...formData, dni: val});
-                        }
+                      // En el front limitamos según tipo: DNI=8 dígitos, CE=9 dígitos
+                      if (formData.tipo_documento === 'DNI') {
+                        if (/^\d*$/.test(val) && val.length <= 8) setFormData({...formData, dni: val});
+                      } else if (formData.tipo_documento === 'CE') {
+                        if (/^\d*$/.test(val) && val.length <= 9) setFormData({...formData, dni: val});
+                      } else {
+                        if (val.length <= 15) setFormData({...formData, dni: val});
                       }
                     }} 
-                    helperText={formData.tipo_documento === 'DNI' ? "8 dígitos" : "Ingrese el número sin prefijos (ej: 87451236)"}
+                    helperText={formData.tipo_documento === 'DNI' ? "8 dígitos" : (formData.tipo_documento === 'CE' ? '9 dígitos' : 'Ingrese el número sin prefijos (ej: 87451236)')}
                   />
                 </Grid>
               </Grid>
@@ -893,18 +1138,13 @@ export default function Pacientes() {
                 <Grid size={6}>
                   {formData.etapa_vida === 'Gestante' && (
                     <TextField
-                      select
                       label="Detalle de Gestación"
+                      placeholder="Ej: A1, 38 semanas, embarazo de alto riesgo..."
                       fullWidth
                       value={formData.detalle_gestante}
                       onChange={(e) => setFormData({...formData, detalle_gestante: e.target.value})}
                       sx={{ animation: 'fadeIn 0.5s' }}
-                    >
-                      <MenuItem value="">Seleccione sector...</MenuItem>
-                      <MenuItem value="A1">Sector A1</MenuItem>
-                      <MenuItem value="A2">Sector A2</MenuItem>
-                      <MenuItem value="A3">Sector A3</MenuItem>
-                    </TextField>
+                    />
                   )}
                 </Grid>
               </Grid>

@@ -9,7 +9,7 @@ import {
   SettingsBackupRestore as RestoreIcon, PersonOff as PersonOffIcon
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getPacientes, updatePaciente, getNextHC } from '../../services/pacientesService';
+import { getPacientes, updatePaciente, getNextHC, getAllPacientes, deletePaciente } from '../../services/pacientesService';
 import { AuthContext } from '../../contexts/AuthContext';
 import Swal from 'sweetalert2';
 
@@ -43,35 +43,179 @@ export default function Archivados() {
   });
 
   const handleReactivate = async (paciente) => {
-    try {
-      Swal.fire({
-        title: 'Reactivar Paciente',
-        text: `Se le asignará una nueva Historia Clínica automática a ${paciente.nombre}. ¿Continuar?`,
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonText: 'Sí, reactivar',
-        cancelButtonText: 'Cancelar',
-        showLoaderOnConfirm: true,
-        heightAuto: false,
-        preConfirm: async () => {
+    Swal.fire({
+      title: '¿Cómo deseas reactivar este paciente?',
+      text: `${paciente.nombre} ${paciente.apellido}`,
+      icon: 'question',
+      showCancelButton: true,
+      showDenyButton: true,
+      confirmButtonColor: '#3085d6',
+      denyButtonColor: '#ff9800',
+      cancelButtonColor: '#d33',
+      confirmButtonText: 'Buscar HC Liberada',
+      denyButtonText: 'Asignar HC Nueva',
+      cancelButtonText: 'Cancelar',
+      heightAuto: false
+    }).then(async (result) => {
+      if (result.isDenied) {
+        // Opción: Asignar HC nueva disponible
+        try {
+          Swal.fire({
+            title: 'Obteniendo HC disponible...',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading(),
+            heightAuto: false
+          });
+
           const resp = await getNextHC();
-          const nextHC = resp.data?.next_hc || resp.next_hc || 'H-1';
-          return nextHC;
-        }
-      }).then((result) => {
-        if (result.isConfirmed) {
-          const newHC = result.value;
+          const newHC = resp.data?.next_hc || resp.next_hc || 'H-1';
+
           const payload = {
-            ...paciente,
             HistoriaClinica: newHC,
             estado: 'Activo'
           };
-          updateMutation.mutate(payload);
+
+          if (paciente.dni != null && String(paciente.dni).trim() !== '') {
+            payload.dni = String(paciente.dni).trim();
+          }
+          if (paciente.tipo_documento != null && String(paciente.tipo_documento).trim() !== '') {
+            payload.tipo_documento = String(paciente.tipo_documento).trim();
+          }
+
+          await updatePaciente(paciente.id, payload);
+          queryClient.invalidateQueries(['pacientes-archivados']);
+          queryClient.invalidateQueries(['pacientes']);
+
+          Swal.fire({
+            icon: 'success',
+            title: 'Paciente Reactivado',
+            text: `${paciente.nombre} ha sido reactivado con la HC: ${newHC}`,
+            timer: 2200,
+            showConfirmButton: false,
+            heightAuto: false
+          });
+        } catch (err) {
+          const serverError = err.response?.data?.message ||
+            (err.response?.data?.errors ? JSON.stringify(err.response.data.errors) : null) ||
+            err.message || 'Error desconocido';
+
+          Swal.fire({
+            icon: 'error',
+            title: 'No se pudo reactivar',
+            text: serverError,
+            confirmButtonColor: '#3085d6',
+            heightAuto: false
+          });
         }
-      });
-    } catch (err) {
-      Swal.fire('Error', 'No se pudo obtener una nueva HC', 'error');
-    }
+      } else if (result.isConfirmed) {
+        // Opción: Buscar HC liberada
+        try {
+          Swal.fire({
+            title: 'Buscando HC liberadas...',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading(),
+            heightAuto: false
+          });
+
+          const all = await getAllPacientes();
+          const available = (Array.isArray(all.data) ? all.data : all).filter((p) => {
+            const nombre = String(p.nombre || '').trim().toUpperCase();
+            const apellido = String(p.apellido || '').trim().toUpperCase();
+            return (
+              String(p.HistoriaClinica || '').trim() &&
+              ((nombre === 'HC' && apellido === 'LIBERADA') ||
+                (!nombre && !apellido))
+            );
+          }).sort((a, b) => {
+            const aNum = Number(String(a.HistoriaClinica || '').replace(/\D/g, '')) || 0;
+            const bNum = Number(String(b.HistoriaClinica || '').replace(/\D/g, '')) || 0;
+            if (aNum !== bNum) return aNum - bNum;
+            return String(a.HistoriaClinica || '').localeCompare(String(b.HistoriaClinica || ''));
+          });
+
+          if (available.length === 0) {
+            Swal.fire({
+              icon: 'warning',
+              title: 'No hay HC liberadas',
+              text: 'No se encontraron HC liberadas. Usa la opción de HC nueva en su lugar.',
+              confirmButtonColor: '#3085d6',
+              heightAuto: false
+            });
+            return;
+          }
+
+          const hcOptions = available.map((p) => ({
+            value: p.HistoriaClinica,
+            label: `${p.HistoriaClinica} (ID: ${p.id})`
+          }));
+
+          const { value: selectedHC } = await Swal.fire({
+            title: 'Selecciona una HC Liberada',
+            input: 'select',
+            inputOptions: Object.assign({}, ...hcOptions.map(opt => ({ [opt.value]: opt.label }))),
+            inputPlaceholder: 'Elige una HC...',
+            showCancelButton: true,
+            confirmButtonText: 'Asignar',
+            cancelButtonText: 'Cancelar',
+            inputValidator: (value) => {
+              if (!value) return 'Debes seleccionar una HC';
+            },
+            heightAuto: false
+          });
+
+          if (selectedHC) {
+            Swal.fire({
+              title: 'Reactivando...',
+              allowOutsideClick: false,
+              didOpen: () => Swal.showLoading(),
+              heightAuto: false
+            });
+
+            const candidateToDelete = available.find((p) => p.HistoriaClinica === selectedHC);
+            if (candidateToDelete) {
+              await deletePaciente(candidateToDelete.id);
+            }
+
+            const payload = {
+              HistoriaClinica: selectedHC,
+              estado: 'Activo'
+            };
+
+            if (paciente.dni != null && String(paciente.dni).trim() !== '') {
+              payload.dni = String(paciente.dni).trim();
+            }
+            if (paciente.tipo_documento != null && String(paciente.tipo_documento).trim() !== '') {
+              payload.tipo_documento = String(paciente.tipo_documento).trim();
+            }
+
+            await updatePaciente(paciente.id, payload);
+            queryClient.invalidateQueries(['pacientes-archivados']);
+            queryClient.invalidateQueries(['pacientes']);
+
+            Swal.fire({
+              icon: 'success',
+              title: 'Paciente Reactivado',
+              text: `${paciente.nombre} ha sido reactivado con la HC liberada: ${selectedHC}`,
+              timer: 2200,
+              showConfirmButton: false,
+              heightAuto: false
+            });
+          }
+        } catch (err) {
+          const serverError = err.response?.data?.message ||
+            (err.response?.data?.errors ? JSON.stringify(err.response.data.errors) : null) ||
+            err.message || 'Error desconocido';
+
+          Swal.fire({
+            icon: 'error',
+            title: 'Error en la búsqueda',
+            text: serverError,
+            confirmButtonColor: '#3085d6',
+            heightAuto: false
+          });
+        }
+      }
+    });
   };
 
   const rawItems = Array.isArray(data?.data) ? data.data : [];

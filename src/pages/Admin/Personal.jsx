@@ -469,6 +469,15 @@ export default function Personal() {
         return [];
       };
 
+      const findCargoColumnIndex = (headerRow) => {
+        if (!headerRow) return -1;
+        for (let idx = 0; idx < headerRow.length; idx++) {
+          const raw = normalizeText(headerRow[idx] || '');
+          if (raw.includes('CARGO') || raw.includes('PUESTO')) return idx;
+        }
+        return -1;
+      };
+
       headerRowIndex = findHeaderRowIndex(data);
       const headerRow = headerRowIndex !== -1 ? data[headerRowIndex] : null;
       let dayIndexes = dayColumns(headerRow);
@@ -480,12 +489,14 @@ export default function Personal() {
           console.log('[IMPORT DEBUG] fallback dayIndexes applied =', dayIndexes);
         }
       }
+      const cargoColumnIndex = findCargoColumnIndex(headerRow);
       const startIndex = headerRowIndex !== -1 ? headerRowIndex + 1 : 0;
 
       // DEBUG: información para diagnosticar detección de columnas de día
       console.log('[IMPORT DEBUG] headerRowIndex =', headerRowIndex);
       console.log('[IMPORT DEBUG] headerRow (raw) =', headerRow);
       console.log('[IMPORT DEBUG] dayIndexes =', dayIndexes);
+      console.log('[IMPORT DEBUG] cargoColumnIndex =', cargoColumnIndex);
 
       for (let i = startIndex; i < data.length; i++) {
         const row = data[i];
@@ -564,9 +575,11 @@ export default function Personal() {
           nombres = 'PERSONAL';
         }
 
+        const cargoValue = cargoColumnIndex >= 0 ? String(row[cargoColumnIndex] || '').trim() : '';
         currentSpecialty.staff.push({
           nombres: nombres.toUpperCase(),
           apellidos: apellidos.toUpperCase(),
+          cargo: cargoValue,
           horario_mensual: monthlySchedule
         });
 
@@ -669,6 +682,7 @@ export default function Personal() {
               email: ``,
               // Email ALEATORIO -> ${s.nombres.toLowerCase().replace(/[^a-z]/g, '').substring(0, 5)}${tempDni.substring(4)}@hosp.gob.pe
               telefono: 'N/A',
+              cargo: s.cargo || '',
               horario_semanal: [],
               horario_mensual: horario
             };

@@ -143,12 +143,77 @@ export default function Citas() {
       const resp = res?.data || res;
       return Array.isArray(resp.data) ? resp.data : (Array.isArray(resp) ? resp : []);
     }),
-    enabled: !!user && openModal,
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
   });
+
+  const isPersonalInShift = (personal, fecha) => {
+    if (!fecha || !personal || !personal.horario_mensual) return false;
+    
+    try {
+      const dateObj = new Date(fecha + 'T00:00:00');
+      const diaDelMes = dateObj.getDate();
+      
+      let horarios = personal.horario_mensual;
+      if (typeof horarios === 'string') {
+        horarios = JSON.parse(horarios);
+      }
+      
+      if (!Array.isArray(horarios)) return false;
+      
+      const horarioDelDia = horarios.find(h => parseInt(h.dia_numero) === diaDelMes);
+      if (!horarioDelDia) return false;
+      
+      // Verificar si tiene al menos un turno ese día
+      return !!(horarioDelDia.turno_m || horarioDelDia.turno_t || horarioDelDia.turno_n);
+    } catch (e) {
+      console.error('Error verificando turno:', e);
+      return false;
+    }
+  };
+
+  const getPersonalTurnoDetails = (personal, fecha) => {
+    if (!fecha || !personal || !personal.horario_mensual) return null;
+    
+    try {
+      const dateObj = new Date(fecha + 'T00:00:00');
+      const diaDelMes = dateObj.getDate();
+      
+      let horarios = personal.horario_mensual;
+      if (typeof horarios === 'string') {
+        horarios = JSON.parse(horarios);
+      }
+      
+      if (!Array.isArray(horarios)) return null;
+      
+      const horarioDelDia = horarios.find(h => parseInt(h.dia_numero) === diaDelMes);
+      if (!horarioDelDia) return null;
+      
+      const turnos = [];
+      if (horarioDelDia.turno_m) turnos.push({ tipo: 'M', codigo: horarioDelDia.turno_m });
+      if (horarioDelDia.turno_t) turnos.push({ tipo: 'T', codigo: horarioDelDia.turno_t });
+      if (horarioDelDia.turno_n) turnos.push({ tipo: 'N', codigo: horarioDelDia.turno_n });
+      
+      return turnos.length > 0 ? turnos : null;
+    } catch (e) {
+      console.error('Error obteniendo detalles del turno:', e);
+      return null;
+    }
+  };
+
+  const getTurnoColor = (tipo) => {
+    switch(tipo) {
+      case 'M': return '#FFD700'; // Amarillo para Mañana
+      case 'T': return '#FF6B6B'; // Rojo para Tarde
+      case 'N': return '#4A90E2'; // Azul para Noche
+      default: return '#9E9E9E'; // Gris por defecto
+    }
+  };
 
   const filteredPersonal = useMemo(() => {
     const list = Array.isArray(personalData) ? personalData : [];
     if (!formData.especialidad_id) return list;
+    
     return list.filter(p => 
       String(p.especialidad_id) === String(formData.especialidad_id) || 
       (p.especialidad && String(p.especialidad.id) === String(formData.especialidad_id))
@@ -494,7 +559,7 @@ export default function Citas() {
       observaciones: formData.observaciones || "",
       nro_ticket: parseInt(ticketValue),
       total_tickets_dia: parseInt(totalValue),
-      operador_id: parseInt(user?.operador_id || user?.id || user?.pk || 0)
+      operador_id: user?.operador_id ? parseInt(user.operador_id) : null
     };
 
     console.log("DEBUG - Payload a enviar:", JSON.stringify(payload, null, 2));
@@ -907,59 +972,6 @@ export default function Citas() {
               </Paper>
 
               <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
-                <Typography variant="subtitle2" color="primary" sx={{ fontWeight: "bold", mb: 3, borderBottom: "2px solid #primary.main", pb: 1, textTransform: "uppercase", letterSpacing: 1 }}>ASIGNACIÓN MÉDICA</Typography>
-                <Grid container spacing={3}>
-                  <Grid size={12}>
-                    <Autocomplete
-                      sx={{ minWidth: 230 }}
-                      options={Array.isArray(especialidadesData) ? especialidadesData : []}
-                      getOptionLabel={(esp) => `${esp.UPS || ''} — ${esp.especialidad || esp.nombre || ''}`}
-                      value={Array.isArray(especialidadesData) ? especialidadesData.find(esp => String(esp.id) === String(formData.especialidad_id)) || null : null}
-                      disabled={viewMode}
-                      onChange={(event, newValue) => {
-                        console.log("Especialidad seleccionada:", newValue);
-                        setFormData({ 
-                          ...formData, 
-                          especialidad_id: newValue ? newValue.id : "",
-                          personal_salud_id: "" // Limpiar médico al cambiar especialidad
-                        });
-                      }}
-                      renderInput={(params) => (
-                        <TextField 
-                          {...params} 
-                          label="1. Seleccionar Especialidad (UPS)" 
-                          placeholder="Filtra por especialidad primero..."
-                        />
-                      )}
-                      noOptionsText="No se encontraron especialidades"
-                    />
-                  </Grid>
-                  <Grid size={12}>
-                    <Autocomplete
-                      sx={{ minWidth: 230 }}
-                      options={filteredPersonal}
-                      getOptionLabel={(p) => `${p.nombres || ''} ${p.apellidos || ''}${p.especialidad ? ` (${p.especialidad.UPS || p.especialidad.especialidad || ''})` : ""}`}
-                      value={filteredPersonal.find(p => String(p.id) === String(formData.personal_salud_id)) || null}
-                      disabled={viewMode || (!formData.especialidad_id && filteredPersonal.length === 0)}
-                      onChange={(event, newValue) => {
-                        console.log("Médico seleccionado:", newValue);
-                        setFormData({ ...formData, personal_salud_id: newValue ? newValue.id : "" });
-                      }}
-                      renderInput={(params) => (
-                        <TextField 
-                          {...params} 
-                          label="2. Buscar Médico Tratante" 
-                          placeholder={formData.especialidad_id ? "Seleccione especialista..." : "Seleccione especialidad primero"}
-                          helperText={!formData.especialidad_id ? "Seleccione una especialidad para ver los médicos disponibles" : ""}
-                        />
-                      )}
-                      noOptionsText={formData.especialidad_id ? "No hay médicos en esta especialidad" : "Seleccione una especialidad"}
-                    />
-                  </Grid>
-                </Grid>
-              </Paper>
-
-              <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
                 <Typography variant="subtitle2" color="primary" sx={{ fontWeight: "bold", mb: 3, borderBottom: "2px solid #primary.main", pb: 1, textTransform: "uppercase", letterSpacing: 1 }}>PROGRAMACIÓN DE CITA</Typography>
                 <Grid container spacing={3}>
                   <Grid size={12}>
@@ -998,6 +1010,92 @@ export default function Citas() {
                         <MenuItem value="cancelada">Cancelada</MenuItem>
                       </Select>
                     </FormControl>
+                  </Grid>
+                </Grid>
+              </Paper>
+
+              <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
+                <Typography variant="subtitle2" color="primary" sx={{ fontWeight: "bold", mb: 3, borderBottom: "2px solid #primary.main", pb: 1, textTransform: "uppercase", letterSpacing: 1 }}>ASIGNACIÓN MÉDICA</Typography>
+                <Grid container spacing={3}>
+                  <Grid size={12}>
+                    <Autocomplete
+                      sx={{ minWidth: 230 }}
+                      options={Array.isArray(especialidadesData) ? especialidadesData : []}
+                      getOptionLabel={(esp) => `${esp.UPS || ''} — ${esp.especialidad || esp.nombre || ''}`}
+                      value={Array.isArray(especialidadesData) ? especialidadesData.find(esp => String(esp.id) === String(formData.especialidad_id)) || null : null}
+                      disabled={viewMode}
+                      onChange={(event, newValue) => {
+                        console.log("Especialidad seleccionada:", newValue);
+                        setFormData({ 
+                          ...formData, 
+                          especialidad_id: newValue ? newValue.id : "",
+                          personal_salud_id: "" // Limpiar médico al cambiar especialidad
+                        });
+                      }}
+                      renderInput={(params) => (
+                        <TextField 
+                          {...params} 
+                          label="1. Seleccionar Especialidad (UPS)" 
+                          placeholder="Filtra por especialidad primero..."
+                        />
+                      )}
+                      noOptionsText="No se encontraron especialidades"
+                    />
+                  </Grid>
+                  <Grid size={12}>
+                    <Autocomplete
+                      sx={{ minWidth: 230 }}
+                      options={filteredPersonal}
+                      getOptionLabel={(p) => {
+                        const cargo = p.cargo ? `(${p.cargo})` : '';
+                        return `${p.nombres || ''} ${p.apellidos || ''} ${cargo}`;
+                      }}
+                      isOptionEqualToValue={(option, value) => option.id === value.id}
+                      value={filteredPersonal.find(p => String(p.id) === String(formData.personal_salud_id)) || null}
+                      disabled={viewMode || (!formData.especialidad_id && filteredPersonal.length === 0)}
+                      onChange={(event, newValue) => {
+                        console.log("Médico seleccionado:", newValue);
+                        setFormData({ ...formData, personal_salud_id: newValue ? newValue.id : "" });
+                      }}
+                      renderOption={(props, option) => {
+                        const turnoDetails = getPersonalTurnoDetails(option, formData.fecha);
+                        return (
+                          <li {...props} key={option.id}>
+                            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", gap: 2 }}>
+                              <Typography>
+                                {option.nombres || ''} {option.apellidos || ''} {option.cargo ? `(${option.cargo})` : ''}
+                              </Typography>
+                              {turnoDetails && (
+                                <Box sx={{ display: "flex", gap: 0.5 }}>
+                                  {turnoDetails.map((turno, idx) => (
+                                    <Chip
+                                      key={idx}
+                                      size="small"
+                                      label={`${turno.tipo}: ${turno.codigo}`}
+                                      sx={{
+                                        backgroundColor: getTurnoColor(turno.tipo),
+                                        color: turno.tipo === 'M' ? "#333" : "#fff",
+                                        fontWeight: 500,
+                                        borderRadius: 1
+                                      }}
+                                    />
+                                  ))}
+                                </Box>
+                              )}
+                            </Box>
+                          </li>
+                        );
+                      }}
+                      renderInput={(params) => (
+                        <TextField 
+                          {...params} 
+                          label="2. Buscar Médico Tratante" 
+                          placeholder={formData.especialidad_id ? "Seleccione especialista..." : "Seleccione especialidad primero"}
+                          helperText={!formData.especialidad_id ? "Seleccione una especialidad para ver los médicos disponibles" : ""}
+                        />
+                      )}
+                      noOptionsText={formData.especialidad_id ? "No hay médicos en esta especialidad" : "Seleccione una especialidad"}
+                    />
                   </Grid>
                 </Grid>
               </Paper>

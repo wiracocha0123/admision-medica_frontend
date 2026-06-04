@@ -49,6 +49,7 @@ export default function Personal() {
     dni: '',
     telefono: '',
     email: '',
+    cargo: '',
     especialidad_id: '',
     horario_semanal: {},
     horario_mensual: []
@@ -235,6 +236,7 @@ export default function Personal() {
         dni: item.dni || '',
         telefono: item.telefono || '',
         email: item.email || '',
+        cargo: item.cargo || '',
         especialidad_id: item.especialidad_id || '',
         horario_semanal: normalizedHorario || {},
         horario_mensual: cleanMensual
@@ -246,6 +248,7 @@ export default function Personal() {
         dni: '',
         telefono: '',
         email: '',
+        cargo: '',
         especialidad_id: '',
         horario_semanal: {},
         horario_mensual: []
@@ -848,6 +851,7 @@ export default function Personal() {
               <TableCell>Telèfono</TableCell>
               <TableCell>Email</TableCell>
               <TableCell>Especialidad</TableCell>
+              <TableCell>Cargo</TableCell>
               <TableCell>Horario Mensual</TableCell>
               <TableCell align="right">Acciones</TableCell>
             </TableRow>
@@ -870,6 +874,7 @@ export default function Personal() {
                    <TableCell>{p.telefono || '-'}</TableCell>
                    <TableCell>{p.email || '-'}</TableCell>
                    <TableCell><Chip label={p.especialidad?.especialidad || 'Sin asignar'} size="small" /></TableCell>
+                   <TableCell>{p.cargo || '-'}</TableCell>
                    <TableCell>
                       <Stack spacing={1}>
                         {p.horario_mensual && (Array.isArray(p.horario_mensual) ? p.horario_mensual.length > 0 : String(p.horario_mensual).length > 2) ? (
@@ -946,6 +951,10 @@ export default function Personal() {
               <Divider />
               <ListItem>
                 <ListItemText primary="Email" secondary={selectedItem.email || '-'} />
+              </ListItem>
+              <Divider />
+              <ListItem>
+                <ListItemText primary="Cargo" secondary={selectedItem.cargo || '-'} />
               </ListItem>
               <Divider />
               
@@ -1034,6 +1043,11 @@ export default function Personal() {
                 label="Email" type="email" fullWidth variant="outlined"
                 value={formData.email} 
                 onChange={(e) => setFormData({...formData, email: e.target.value})} 
+              />
+              <TextField 
+                label="Cargo" fullWidth variant="outlined"
+                value={formData.cargo} 
+                onChange={(e) => setFormData({...formData, cargo: e.target.value})} 
               />
               
               <Autocomplete

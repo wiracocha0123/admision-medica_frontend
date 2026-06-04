@@ -562,13 +562,13 @@ export default function Citas() {
     doc.setFont("helvetica", "bold");
     doc.text(`MÉDICO / CONSULTORIO:`, 5, 95);
     doc.setFont("helvetica", "normal");
-    const medicoNombre = `${cita.personal?.apellidos || cita.personal_salud?.apellidos || 'POR ASIGNAR'}`;
+    const medicoNombre = `${cita.personal_salud?.nombres} ${cita.personal_salud?.apellidos}`  || 'POR ASIGNAR';
     doc.text(medicoNombre, 5, 100);
 
     doc.setFont("helvetica", "bold");
     doc.text(`ADMISIONISTA:`, 5, 110);
     doc.setFont("helvetica", "normal");
-    doc.text(`${user?.name || 'Admisión'}`, 5, 115);
+    doc.text(`${cita.operador?.nombre} ${cita.operador?.apellido || 'Admisión'}`, 5, 115);
 
     doc.line(5, 120, 75, 120);
     doc.setFontSize(7);

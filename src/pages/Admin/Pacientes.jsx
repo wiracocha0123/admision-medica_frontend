@@ -386,17 +386,23 @@ export default function Pacientes() {
     
     const payload = {
       ...formData,
-      dni: dniToSend || '',
       tipo_documento: docTypeToSend,
       telefono: formData.telefono && String(formData.telefono).trim() ? formData.telefono : 'N/A',
       direccion: formData.direccion && String(formData.direccion).trim() ? formData.direccion : 'N/A',
       email: formData.email && String(formData.email).trim() ? formData.email : null
     };
 
+    // Solo incluir DNI si tiene valor, de lo contrario omitir del payload
+    if (dniToSend) {
+      payload.dni = dniToSend;
+    } else {
+      delete payload.dni;
+    }
+
     // DEBUG: Log para verificar qué se está enviando
     console.log('[PACIENTES DEBUG] Payload a enviar:', {
+      tiene_dni: 'dni' in payload,
       dni: payload.dni,
-      dni_length: payload.dni ? payload.dni.length : 0,
       tipo_documento: payload.tipo_documento
     });
 
@@ -640,8 +646,7 @@ export default function Pacientes() {
             const placeholderPayload = {
               nombre: 'HC',
               apellido: 'LIBERADA',
-              tipo_documento: '',
-              dni: '',
+              tipo_documento: null,
               HistoriaClinica: originalHC,
               telefono: null,
               email: null,

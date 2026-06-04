@@ -269,7 +269,8 @@ export default function Personal() {
       return;
     }
 
-    if (!formData.dni || String(formData.dni).length !== 8) {
+    if (formData.dni){
+      if (!formData.dni || String(formData.dni).length !== 8) {
       Swal.fire({
         icon: 'warning',
         title: 'DNI inválido',
@@ -278,6 +279,7 @@ export default function Personal() {
         heightAuto: false
       });
       return;
+    }
     }
 
     if (!formData.especialidad_id) {
@@ -637,10 +639,10 @@ export default function Personal() {
         }
 
         // Importar personal
-        let tempDniBase = Math.floor(Math.random() * 90000000) + 10000000;
+        // let tempDniBase = Math.floor(Math.random() * 90000000) + 10000000;
         for (let s of entity.staff) {
           try {
-            const tempDni = String(tempDniBase++);
+            // const tempDni = String(tempDniBase++);
 
             // Asegurar que `horario_mensual` tenga al menos 30 entradas requeridas por el backend
             const horario = Array.isArray(s.horario_mensual) ? s.horario_mensual.slice() : [];
@@ -660,9 +662,10 @@ export default function Personal() {
               nombres: s.nombres,
               apellidos: s.apellidos,
               especialidad_id: specialtyId,
-              dni: tempDni,
-              email: `${s.nombres.toLowerCase().replace(/[^a-z]/g, '').substring(0, 5)}${tempDni.substring(4)}@hosp.gob.pe`,
-              telefono: '900000000',
+              dni: null,
+              email: ``,
+              // Email ALEATORIO -> ${s.nombres.toLowerCase().replace(/[^a-z]/g, '').substring(0, 5)}${tempDni.substring(4)}@hosp.gob.pe
+              telefono: 'N/A',
               horario_semanal: [],
               horario_mensual: horario
             };

@@ -9,7 +9,7 @@ import {
 import { 
   Edit as EditIcon, Delete as DeleteIcon, Add as AddIcon, Refresh as RefreshIcon,
   People as PeopleIcon, Search as SearchIcon, FilterList as FilterIcon,
-  FileUpload as ImportIcon, Archive as ArchiveIcon, History as HistoryIcon, Replay as ReplayIcon
+  FileUpload as ImportIcon, Archive as ArchiveIcon, History as HistoryIcon, Replay as ReplayIcon, Close as CloseIcon
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getPacientes, createPaciente, updatePaciente, deletePaciente, getNextHC, getAllPacientes } from '../../services/pacientesService';
@@ -1092,8 +1092,11 @@ export default function Pacientes() {
 
       {/* Modal Crear/Editar Paciente */}
       <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ bgcolor: formData.id ? 'primary.main' : 'success.main', color: 'white', mb: 2 }}>
+        <DialogTitle sx={{ bgcolor: formData.id ? 'primary.main' : 'success.main', color: 'white', mb: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           {formData.id ? 'Editar Paciente' : 'Registrar Nuevo Paciente'}
+          <IconButton size="small" onClick={() => setEditDialogOpen(false)} sx={{ color: 'white' }}>
+            <CloseIcon />
+          </IconButton>
         </DialogTitle>
         <form onSubmit={handleSave} noValidate>
           <DialogContent dividers>

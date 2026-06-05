@@ -9,7 +9,7 @@ import {
   Refresh as RefreshIcon, CalendarMonth as CalendarIcon, Edit as EditIcon, 
   Delete as DeleteIcon, Visibility as VisibilityIcon, Add as AddIcon,
   Search as SearchIcon, FilterList as FilterIcon, Settings as SettingsIcon,
-  PictureAsPdf as PdfIcon, Clear as ClearIcon
+  PictureAsPdf as PdfIcon, Clear as ClearIcon, Close as CloseIcon
 } from "@mui/icons-material";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getCitas, createCita, updateCita, deleteCita } from "../../services/citasService";
@@ -871,7 +871,7 @@ export default function Citas() {
                     <Typography variant="body2">{cita.personal_salud?.nombres} {cita.personal_salud?.apellidos}</Typography>
                   </TableCell>
                   <TableCell>
-                    <Chip label={cita.especialidad?.UPS || "General"} size="small" variant="outlined" sx={{ fontSize: "0.7rem" }} />
+                    <Chip label={cita.personal_salud?.cargo || "General"} size="small" variant="outlined" sx={{ fontSize: "0.7rem" }} />
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2" fontWeight="bold">
@@ -929,9 +929,14 @@ export default function Citas() {
         disableRestoreFocus // Evita conflictos de foco con SweetAlert2
       >
         <form onSubmit={handleSubmit} noValidate>
-          <DialogTitle sx={{ bgcolor: viewMode ? "info.main" : (selectedCita ? "primary.main" : "success.main"), color: "white", py: 2, display: "flex", alignItems: "center", gap: 1 }}>
-            <CalendarIcon />
-            {viewMode ? "Detalles de la Cita" : (selectedCita ? "Modificar Cita" : "Programar Nueva Cita")}
+          <DialogTitle sx={{ bgcolor: viewMode ? "info.main" : (selectedCita ? "primary.main" : "success.main"), color: "white", py: 2, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <CalendarIcon />
+              {viewMode ? "Detalles de la Cita" : (selectedCita ? "Modificar Cita" : "Programar Nueva Cita")}
+            </Box>
+            <IconButton size="small" onClick={handleCloseModal} sx={{ color: "white" }}>
+              <CloseIcon />
+            </IconButton>
           </DialogTitle>
           <DialogContent dividers sx={{ bgcolor: "#f8f9fa", p: 4 }}>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 4 }}>

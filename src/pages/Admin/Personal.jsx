@@ -10,7 +10,7 @@ import {
   Edit as EditIcon, Delete as DeleteIcon, Visibility as ViewIcon, 
   Add as AddIcon, Refresh as RefreshIcon, Search as SearchIcon,
   FilterList as FilterIcon, CalendarToday as CalendarTodayIcon,
-  FileUpload as ImportIcon, CheckCircle as CheckIcon, Warning as WarningIcon
+  FileUpload as ImportIcon, CheckCircle as CheckIcon, Warning as WarningIcon, Close as CloseIcon
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getPersonalSalud, getAllPersonalSalud, deletePersonalSalud, updatePersonalSalud, createPersonalSalud } from '../../services/personalService';
@@ -943,7 +943,12 @@ export default function Personal() {
 
       {/* Modal Ver Detalles */}
       <Dialog open={viewDialogOpen} onClose={() => setViewDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ bgcolor: 'info.main', color: 'white' }}>Detalles del Personal</DialogTitle>
+        <DialogTitle sx={{ bgcolor: 'info.main', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          Detalles del Personal
+          <IconButton size="small" onClick={() => setViewDialogOpen(false)} sx={{ color: 'white' }}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
         <DialogContent dividers>
           {selectedItem && (
             <List>
@@ -1027,8 +1032,11 @@ export default function Personal() {
 
       {/* Modal Crear/Editar Personal */}
       <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ bgcolor: formData.id ? 'primary.main' : 'success.main', color: 'white', mb: 2 }}>
+        <DialogTitle sx={{ bgcolor: formData.id ? 'primary.main' : 'success.main', color: 'white', mb: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           {formData.id ? 'Editar Personal de Salud' : 'Registrar Nuevo Personal'}
+          <IconButton size="small" onClick={() => setEditDialogOpen(false)} sx={{ color: 'white' }}>
+            <CloseIcon />
+          </IconButton>
         </DialogTitle>
         <form onSubmit={handleSave} noValidate>
           <DialogContent>
@@ -1107,8 +1115,13 @@ export default function Personal() {
       </Dialog>
       {/* Modal de Revisión de Importación */}
       <Dialog open={importDialogOpen} onClose={() => !isProcessingImport && setImportDialogOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: 'success.dark', color: 'white' }}>
-          <ImportIcon /> Revisión de Importación de Rol
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', bgcolor: 'success.dark', color: 'white' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <ImportIcon /> Revisión de Importación de Rol
+          </Box>
+          <IconButton size="small" onClick={() => !isProcessingImport && setImportDialogOpen(false)} sx={{ color: 'white' }} disabled={isProcessingImport}>
+            <CloseIcon />
+          </IconButton>
         </DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2" color="text.secondary" gutterBottom>

@@ -3,14 +3,15 @@ import {
     Paper, Typography, Table, TableBody, TableCell, TableHead, TableRow, 
     Button, Box, CircularProgress, Alert, TableContainer, Skeleton, 
     Chip, Stack, Modal, Fade, List, ListItem, 
-    ListItemText, Divider, Avatar, Pagination
+    ListItemText, Divider, Avatar, Pagination, IconButton
 } from '@mui/material';
 import { 
     Assessment as ReportIcon, 
     Visibility as ViewIcon, 
     Refresh as RefreshIcon,
     Person as PersonIcon,
-    FileDownload as DownloadIcon
+    FileDownload as DownloadIcon,
+    Close as CloseIcon
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
@@ -66,20 +67,53 @@ export default function Reportes() {
                 return;
             }
 
-            // Mapeamos los datos para el formato de Excel
-            const dataToExport = pacientes.map(p => ({
-                'Apellido': p.apellido || '',
-                'Nombre': p.nombre || '',
-                'DNI': p.dni || '',
-                'H.C.': p.HistoriaClinica || '',
-                'Teléfono': p.telefono || '',
-                'Email': p.email || '',
-                'Dirección': p.direccion || '',
-                'Gestante': p.gestante && p.gestante !== '0' ? 'SÍ' : 'NO'
-            }));
+            // Construimos los datos del personal en la parte superior
+            const personalData = [
+                ['REPORTE DE PACIENTES ATENDIDOS'],
+                [],
+                ['Nombre:', `${personal.nombres} ${personal.apellidos}`],
+                ['Especialidad:', personal.especialidad?.especialidad || 'General'],
+                ['UPS / Cargo:', personal.especialidad?.UPS || 'N/A'],
+                ['Fecha de Reporte:', new Date().toLocaleDateString('es-ES')],
+                [],
+                []
+            ];
 
-            // Creamos el libro de Excel
-            const ws = XLSX.utils.json_to_sheet(dataToExport);
+            // Headers de la tabla de pacientes
+            const headers = [
+                ['Apellido', 'Nombre', 'DNI', 'H.C.', 'Teléfono', 'Email', 'Dirección', 'Gestante']
+            ];
+
+            // Mapeamos los datos de pacientes
+            const dataToExport = pacientes.map(p => [
+                p.apellido || '',
+                p.nombre || '',
+                p.dni || '',
+                p.HistoriaClinica || '',
+                p.telefono || '',
+                p.email || '',
+                p.direccion || '',
+                p.gestante && p.gestante !== '0' ? 'SÍ' : 'NO'
+            ]);
+
+            // Combinamos todo en un solo array de arrays
+            const allData = [...personalData, ...headers, ...dataToExport];
+
+            // Creamos la hoja con todos los datos
+            const ws = XLSX.utils.aoa_to_sheet(allData);
+            
+            // Ajustamos el ancho de las columnas
+            ws['!cols'] = [
+                { wch: 15 }, // Apellido
+                { wch: 15 }, // Nombre
+                { wch: 15 }, // DNI
+                { wch: 12 }, // H.C.
+                { wch: 15 }, // Teléfono
+                { wch: 20 }, // Email
+                { wch: 25 }, // Dirección
+                { wch: 12 }  // Gestante
+            ];
+
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, 'Pacientes');
 
@@ -212,12 +246,19 @@ export default function Reportes() {
                             </Box>
                         ) : (
                             <>
-                                <Typography variant="h6" gutterBottom>
-                                    Pacientes Atendidos - {detailData?.data?.personal?.nombres} {detailData?.data?.personal?.apellidos}
-                                </Typography>
-                                <Typography variant="caption" display="block" sx={{ mb: 2 }}>
-                                    Especialidad: {detailData?.data?.personal?.especialidad || 'General'} | UPS: {detailData?.data?.personal?.UPS || 'N/A'}
-                                </Typography>
+                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                                    <Box>
+                                        <Typography variant="h6" gutterBottom>
+                                            Pacientes Atendidos - {detailData?.data?.personal?.nombres} {detailData?.data?.personal?.apellidos}
+                                        </Typography>
+                                        <Typography variant="caption" display="block">
+                                            Especialidad: {detailData?.data?.personal?.especialidad || 'General'} | UPS: {detailData?.data?.personal?.UPS || 'N/A'}
+                                        </Typography>
+                                    </Box>
+                                    <IconButton size="small" onClick={handleClose}>
+                                        <CloseIcon />
+                                    </IconButton>
+                                </Box>
                                 <Divider />
                                 <List sx={{ mt: 1 }}>
                                     {patientsList.length === 0 ? (

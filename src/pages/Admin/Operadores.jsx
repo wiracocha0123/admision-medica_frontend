@@ -1,6 +1,6 @@
 import React, { useState, useContext } from 'react';
 import { Paper, Typography, Table, TableBody, TableCell, TableHead, TableRow, Button, Box, Avatar, CircularProgress, TableContainer, Dialog, DialogTitle, DialogContent, DialogActions, TextField, IconButton, Tooltip, Stack, Skeleton, Pagination, InputAdornment } from '@mui/material';
-import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Visibility as VisibilityIcon, Refresh as RefreshIcon, Search as SearchIcon } from '@mui/icons-material';
+import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Visibility as VisibilityIcon, Refresh as RefreshIcon, Search as SearchIcon, Close as CloseIcon } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getOperadores, createOperador, updateOperador, deleteOperador } from '../../services/operadoresService';
 import { AuthContext } from '../../contexts/AuthContext';
@@ -324,7 +324,12 @@ export default function Operadores() {
         disableEnforceFocus
         disableRestoreFocus
       >
-        <DialogTitle>{dialogMode === 'create' ? 'Nuevo Operador' : dialogMode === 'edit' ? 'Editar Operador' : 'Detalles del Operador'}</DialogTitle>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          {dialogMode === 'create' ? 'Nuevo Operador' : dialogMode === 'edit' ? 'Editar Operador' : 'Detalles del Operador'}
+          <IconButton size="small" onClick={() => setDialogOpen(false)}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
         <DialogContent>
           {saveError && <Typography color="error" sx={{ mb: 1, mt: 1 }}>{saveError}</Typography>}
           <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>

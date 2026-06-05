@@ -11,7 +11,8 @@ import {
   Add as AddIcon, 
   Edit as EditIcon, 
   Delete as DeleteIcon,
-  Search as SearchIcon 
+  Search as SearchIcon,
+  Close as CloseIcon
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
@@ -224,7 +225,12 @@ export default function Especialidades() {
 
       <Dialog open={open} onClose={handleClose} fullWidth maxWidth="xs">
         <form onSubmit={handleSubmit}>
-          <DialogTitle>{editingId ? 'Editar' : 'Nueva'} Especialidad</DialogTitle>
+          <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            {editingId ? 'Editar' : 'Nueva'} Especialidad
+            <IconButton size="small" onClick={handleClose}>
+              <CloseIcon />
+            </IconButton>
+          </DialogTitle>
           <DialogContent dividers>
             <Stack spacing={2} sx={{ mt: 1 }}>
               <TextField label="Código UPS" value={form.UPS} onChange={e => setForm({...form, UPS: e.target.value})} required fullWidth />

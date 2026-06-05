@@ -15,8 +15,11 @@ import {
   ListItemIcon,
   ListItemText,
   Container,
-  Avatar
-  ,Backdrop,CircularProgress
+  Avatar,
+  Backdrop,
+  CircularProgress,
+  Menu,
+  MenuItem
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -31,7 +34,8 @@ import {
   CalendarToday as CalendarIcon,
   LocalHospital as HealthIcon,
   SupervisorAccount as OperatorIcon,
-  PersonOff as PersonOffIcon
+  PersonOff as PersonOffIcon,
+  Person as PersonIcon
 } from '@mui/icons-material';
 import { AuthContext } from '../contexts/AuthContext';
 import logoImg from '../assets/logo.jpg';
@@ -136,6 +140,7 @@ export default function AdminLayout() {
   const [open, setOpen] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
+  const [anchorEl, setAnchorEl] = useState(null);
 
   const toggleDrawer = () => {
     setOpen(!open);
@@ -147,6 +152,20 @@ export default function AdminLayout() {
   };
 
   const [signingOut, setSigningOut] = React.useState(false);
+
+  // Manejo del menú de usuario
+  const handleOpenMenu = (event) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleCloseMenu = () => {
+    setAnchorEl(null);
+  };
+
+  const handleProfileClick = () => {
+    handleCloseMenu();
+    navigate('/admin/perfil');
+  };
 
   const handleLogout = () => {
     setSigningOut(true);
@@ -231,15 +250,59 @@ export default function AdminLayout() {
             Panel de Administración
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <Typography component="span" variant="body2" sx={{ mr: 2, fontWeight: 'bold' }}>
-              {user?.name}
-            </Typography>
-            <Avatar sx={{ width: 32, height: 32, bgcolor: '#1976d2' }}>
-              {user?.name?.charAt(0).toUpperCase()}
-            </Avatar>
-            <IconButton color="inherit" onClick={handleLogout} sx={{ ml: 2 }} title="Cerrar Sesión">
-              <LogoutIcon />
-            </IconButton>
+            <Box 
+              sx={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                cursor: 'pointer',
+                px: 1,
+                py: 0.5,
+                borderRadius: 1,
+                '&:hover': {
+                  backgroundColor: 'rgba(0, 0, 0, 0.04)'
+                },
+                transition: 'background-color 0.2s'
+              }}
+              onClick={handleOpenMenu}
+            >
+              <Typography component="span" variant="body2" sx={{ mr: 1.5, fontWeight: 'bold' }}>
+                {user?.name}
+              </Typography>
+              <Avatar sx={{ width: 32, height: 32, bgcolor: '#1976d2', cursor: 'pointer' }}>
+                {user?.name?.charAt(0).toUpperCase()}
+              </Avatar>
+            </Box>
+            
+            {/* Menú desplegable de usuario */}
+            <Menu
+              anchorEl={anchorEl}
+              open={Boolean(anchorEl)}
+              onClose={handleCloseMenu}
+              anchorOrigin={{
+                vertical: 'bottom',
+                horizontal: 'right',
+              }}
+              transformOrigin={{
+                vertical: 'top',
+                horizontal: 'right',
+              }}
+              PaperProps={{
+                sx: {
+                  boxShadow: '0px 4px 20px rgba(0, 0, 0, 0.1)',
+                  mt: 1,
+                }
+              }}
+            >
+              <MenuItem onClick={handleProfileClick} sx={{ fontWeight: 500 }}>
+                <PersonIcon sx={{ mr: 1.5 }} />
+                Mi Perfil
+              </MenuItem>
+              <Divider />
+              <MenuItem onClick={handleLogout} sx={{ fontWeight: 500, color: '#d32f2f' }}>
+                <LogoutIcon sx={{ mr: 1.5 }} />
+                Cerrar Sesión
+              </MenuItem>
+            </Menu>
           </Box>
         </Toolbar>
       </AppBar>

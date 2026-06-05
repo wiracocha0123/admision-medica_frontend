@@ -14,6 +14,7 @@ import Especialidades from './pages/Admin/Especialidades';
 import Reportes from './pages/Admin/Reportes';
 import Pacientes from './pages/Admin/Pacientes';
 import Archivados from './pages/Admin/Archivados';
+import Perfil from './pages/Admin/Perfil';
 import Forbidden from './pages/Forbidden';
 
 export default function App() {
@@ -35,6 +36,7 @@ export default function App() {
           >
             <Route index element={<Dashboard />} />
             <Route path="dashboard" element={<Dashboard />} />
+            <Route path="perfil" element={<ProtectedRoute><Perfil /></ProtectedRoute>} />
             <Route path="users" element={<ProtectedRoute requiredRoles={['supervisor','operator']}><Users /></ProtectedRoute>} />
             <Route path="citas" element={<ProtectedRoute><Citas /></ProtectedRoute>} />
             <Route path="personal" element={<ProtectedRoute><Personal /></ProtectedRoute>} />

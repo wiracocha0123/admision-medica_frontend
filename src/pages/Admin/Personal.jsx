@@ -402,7 +402,24 @@ export default function Personal() {
         if (!row || row.length === 0) return false;
         const text = rowText(row);
         if (shouldIgnoreRow(row) || isHeaderRow(row)) return false;
-        return text.includes('SERVICIO DE') || text.includes('AREA DE') || text.includes('DPTO') || text.includes('DEPARTAMENTO');
+        
+        // Verificar que la primera columna NO sea un número (las áreas no tienen número de orden)
+        const firstCell = normalizeText(row[0] || '');
+        const hasOrderNumber = /^\d+[.)]*$/.test(firstCell.trim());
+        
+        if (hasOrderNumber) return false; // Si tiene número de orden, es un personal, no un área
+        
+        // Detectar todas las variantes de áreas: servicios, módulos, departamentos, áreas, unidades, oficinas, etc.
+        return text.includes('SERVICIO DE') 
+          || text.includes('AREA DE') 
+          || text.includes('DPTO') 
+          || text.includes('DEPARTAMENTO')
+          || text.includes('MODULO DE')
+          || text.includes('UNIDAD DE')
+          || text.includes('UNIDAD')
+          || text.includes('LABORATORIO')
+          || text.includes('OFICINA DE')
+          || text.includes('OFICINA');
       };
 
       const isShiftRow = (row) => {
@@ -505,15 +522,10 @@ export default function Personal() {
         if (isHeaderRow(row)) continue;
 
         if (isSpecialtyRow(row)) {
+          // Mantener el nombre completo del área incluyendo prefijos como SERVICIO DE, MODULO DE, etc.
           const name = rowText(row)
-            .replace('SERVICIO DE', '')
-            .replace('AREA DE', '')
-            .replace('SERVICIO', '')
-            .replace('AREA', '')
-            .replace('DPTO.', '')
-            .replace('DEPARTAMENTO DE', '')
-            .replace('DEPARTAMENTO', '')
-            .trim();
+            .trim()
+            .replace(/\s+/g, ' '); // Solo limpiar espacios múltiples
 
           currentSpecialty = { name: name || 'SIN ESPECIALIDAD', staff: [] };
           entities.push(currentSpecialty);
@@ -590,18 +602,35 @@ export default function Personal() {
         }
       }
 
+      // Mantener cada sección de especialidad como independiente
+      // Si hay duplicados del mismo nombre, agregar sufijo para diferenciarlas
       const mergedEntities = [];
+      const nameOccurrences = {};
+
       for (const entity of entities) {
-        const existing = mergedEntities.find(e => e.name === entity.name);
-        if (existing) {
-          existing.staff.push(...entity.staff);
-        } else {
-          mergedEntities.push({ ...entity, staff: [...entity.staff] });
+        const baseName = entity.name;
+        if (!nameOccurrences[baseName]) {
+          nameOccurrences[baseName] = 0;
         }
+        nameOccurrences[baseName]++;
+        
+        const uniqueName = nameOccurrences[baseName] > 1 
+          ? `${baseName} - Sección ${nameOccurrences[baseName]}`
+          : baseName;
+          
+        mergedEntities.push({ 
+          ...entity, 
+          name: uniqueName,
+          staff: [...entity.staff] 
+        });
       }
 
       const results = mergedEntities.map(entity => {
-        const existing = especialidades.find(e => e.especialidad.toUpperCase().includes(entity.name.toUpperCase()));
+        // Buscar especialidad por el nombre base (sin el sufijo de sección)
+        const baseNameForSearch = entity.name.includes(' - Sección ') 
+          ? entity.name.split(' - Sección ')[0]
+          : entity.name;
+        const existing = especialidades.find(e => e.especialidad.toUpperCase().includes(baseNameForSearch.toUpperCase()));
         return {
           ...entity,
           selected: true,

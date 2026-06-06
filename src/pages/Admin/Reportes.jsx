@@ -73,7 +73,7 @@ export default function Reportes() {
                 [],
                 ['Nombre:', `${personal.nombres} ${personal.apellidos}`],
                 ['Especialidad:', personal.especialidad?.especialidad || 'General'],
-                ['UPS / Cargo:', personal.especialidad?.UPS || 'N/A'],
+                ['Cargo:', personal.cargo || 'N/A'],
                 ['Fecha de Reporte:', new Date().toLocaleDateString('es-ES')],
                 [],
                 []
@@ -157,7 +157,7 @@ export default function Reportes() {
                     <TableHead>
                         <TableRow sx={{ bgcolor: 'grey.50' }}>
                             <TableCell>Personal de Salud</TableCell>
-                            <TableCell>Especialidad / UPS</TableCell>
+                            <TableCell>Especialidad / Cargo</TableCell>
                             <TableCell align="center">Pacientes</TableCell>
                             <TableCell align="right">Acciones</TableCell>
                         </TableRow>
@@ -185,7 +185,7 @@ export default function Reportes() {
                                     <TableCell>
                                         <Typography variant="body2">{it.especialidad?.especialidad || 'General'}</Typography>
                                         <Typography variant="caption" color="textSecondary">
-                                            {it.especialidad?.UPS ? `UPS: ${it.especialidad.UPS}` : ''}
+                                            {it.cargo ? `Cargo: ${it.cargo}` : ''}
                                         </Typography>
                                     </TableCell>
                                     <TableCell align="center">
@@ -252,7 +252,7 @@ export default function Reportes() {
                                             Pacientes Atendidos - {detailData?.data?.personal?.nombres} {detailData?.data?.personal?.apellidos}
                                         </Typography>
                                         <Typography variant="caption" display="block">
-                                            Especialidad: {detailData?.data?.personal?.especialidad || 'General'} | UPS: {detailData?.data?.personal?.UPS || 'N/A'}
+                                            Especialidad: {detailData?.data?.personal?.especialidad || 'General'} | Cargo: {detailData?.data?.personal?.cargo || 'N/A'}
                                         </Typography>
                                     </Box>
                                     <IconButton size="small" onClick={handleClose}>

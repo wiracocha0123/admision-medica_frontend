@@ -32,18 +32,17 @@ export default function Perfil() {
   const { user } = useContext(AuthContext);
   const queryClient = useQueryClient();
   const [editMode, setEditMode] = useState(false);
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [formData, setFormData] = useState({
-    name: user?.name || "",
+    nombre: "",
+    apellido: "",
     email: user?.email || "",
     telefono: user?.telefono || "",
   });
 
   const [passwordData, setPasswordData] = useState({
-    current_password: "",
     new_password: "",
     confirm_password: "",
   });
@@ -55,32 +54,18 @@ export default function Perfil() {
     enabled: !!user,
   });
 
-  // Función para segmentar nombre y apellido
-  const segmentarNombre = (nombreCompleto) => {
-    if (!nombreCompleto) return { nombre: "", apellido: "" };
-    const partes = nombreCompleto.trim().split(" ");
-    if (partes.length === 1) {
-      return { nombre: partes[0], apellido: "" };
-    }
-    const nombre = partes[0];
-    const apellido = partes.slice(1).join(" ");
-    return { nombre, apellido };
-  };
-
-  // Función para combinar nombre y apellido
-  const combinarNombre = (nombre, apellido) => {
-    return [nombre, apellido].filter(Boolean).join(" ");
-  };
-
   React.useEffect(() => {
     if (profileData) {
-      const { nombre, apellido } = segmentarNombre(profileData.name);
+      const fullName = profileData.name || "";
+      const parts = fullName.split(" ");
+      const nombre = parts[0];
+      const apellido = parts.slice(1).join(" ");
+      
       setFormData({
-        name: profileData.name || "",
+        nombre: nombre,
+        apellido: apellido,
         email: profileData.email || "",
         telefono: profileData.telefono || "",
-        nombre: nombre || "",
-        apellido: apellido || "",
       });
     }
   }, [profileData]);
@@ -166,19 +151,16 @@ export default function Perfil() {
       return;
     }
 
-    // Combinar nombre y apellido para enviar al backend
-    const nombreCompleto = combinarNombre(formData.nombre, formData.apellido);
-    const dataToSend = {
-      name: nombreCompleto,
+    const fullName = `${formData.nombre} ${formData.apellido}`.trim();
+    mutationUpdate.mutate({
+      name: fullName,
       email: formData.email,
       telefono: formData.telefono,
-    };
-
-    mutationUpdate.mutate(dataToSend);
+    });
   };
 
   const handleChangePassword = () => {
-    if (!passwordData.current_password || !passwordData.new_password || !passwordData.confirm_password) {
+    if (!passwordData.new_password || !passwordData.confirm_password) {
       Swal.fire({
         icon: "warning",
         title: "Campos Requeridos",
@@ -212,7 +194,6 @@ export default function Perfil() {
     }
 
     mutationChangePassword.mutate({
-      current_password: passwordData.current_password,
       new_password: passwordData.new_password,
     });
   };
@@ -260,11 +241,11 @@ export default function Perfil() {
                     fullWidth
                     label="Nombre"
                     name="nombre"
-                    value={formData.name}
+                    value={formData.nombre}
                     onChange={handleInputChange}
                   />
                 </Grid>
-                {/* <Grid size={{ xs: 12, sm: 6 }}>
+                <Grid size={{ xs: 12, sm: 6 }}>
                   <TextField
                     fullWidth
                     label="Apellido"
@@ -272,7 +253,7 @@ export default function Perfil() {
                     value={formData.apellido}
                     onChange={handleInputChange}
                   />
-                </Grid> */}
+                </Grid>
                 <Grid size={{ xs: 12, sm: 6 }}>
                   <TextField
                     fullWidth
@@ -311,13 +292,16 @@ export default function Perfil() {
                   onClick={() => {
                     setEditMode(false);
                     if (profileData) {
-                      const { nombre, apellido } = segmentarNombre(profileData.name);
+                      const fullName = profileData.name || "";
+                      const parts = fullName.split(" ");
+                      const nombre = parts[0];
+                      const apellido = parts.slice(1).join(" ");
+                      
                       setFormData({
-                        name: profileData.name || "",
+                        nombre: nombre,
+                        apellido: apellido,
                         email: profileData.email || "",
                         telefono: profileData.telefono || "",
-                        nombre: nombre || "",
-                        apellido: apellido || "",
                       });
                     }
                   }}
@@ -375,31 +359,6 @@ export default function Perfil() {
           <Divider sx={{ mb: 3 }} />
 
           <Grid container spacing={2} sx={{ mb: 3 }}>
-            <Grid size={{ xs: 12 }}>
-              <TextField
-                fullWidth
-                label="Contraseña Actual"
-                name="current_password"
-                type={showCurrentPassword ? "text" : "password"}
-                value={passwordData.current_password}
-                onChange={handlePasswordChange}
-                slotProps={{
-                  input: {
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton
-                          size="small"
-                          onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                          edge="end"
-                        >
-                          {showCurrentPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
-                        </IconButton>
-                      </InputAdornment>
-                    ),
-                  },
-                }}
-              />
-            </Grid>
             <Grid size={{ xs: 12 }}>
               <TextField
                 fullWidth

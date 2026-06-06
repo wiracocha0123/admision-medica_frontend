@@ -16,7 +16,7 @@ import { getCitas, createCita, updateCita, deleteCita } from "../../services/cit
 import api from "../../api"; // Asegúrate de importar la instancia configurada de api
 import { getPacientes, getAllPacientes } from "../../services/pacientesService";
 import { getPersonalSalud, getAllPersonalSalud } from "../../services/personalService";
-import { getEspecialidades } from "../../services/especialidadesService";
+import { getEspecialidades, getAllEspecialidades } from "../../services/especialidadesService";
 import { AuthContext } from "../../contexts/AuthContext";
 import Swal from "sweetalert2";
 import { jsPDF } from "jspdf";
@@ -118,7 +118,7 @@ export default function Citas() {
 
   const { data: especialidadesData } = useQuery({
     queryKey: ["especialidades_all"],
-    queryFn: () => getEspecialidades(1).then(res => {
+    queryFn: () => getAllEspecialidades().then(res => {
       const resp = res?.data || res;
       // Normalizamos para obtener solo el array de datos
       return Array.isArray(resp.data) ? resp.data : (Array.isArray(resp) ? resp : []);
@@ -786,7 +786,7 @@ export default function Citas() {
               <MenuItem value="todas">Todas las especialidades</MenuItem>
               {especialidadesList.map((esp) => (
                 <MenuItem key={esp.id} value={esp.id}>
-                  {esp.UPS}
+                  {esp.especialidad}
                 </MenuItem>
               ))}
             </TextField>
@@ -1040,7 +1040,7 @@ export default function Citas() {
                     <Autocomplete
                       sx={{ minWidth: 230 }}
                       options={Array.isArray(especialidadesData) ? especialidadesData : []}
-                      getOptionLabel={(esp) => `${esp.UPS || ''} — ${esp.especialidad || esp.nombre || ''}`}
+                      getOptionLabel={(esp) => `${esp.especialidad || esp.nombre || ''}`}
                       value={Array.isArray(especialidadesData) ? especialidadesData.find(esp => String(esp.id) === String(formData.especialidad_id)) || null : null}
                       disabled={viewMode}
                       onChange={(event, newValue) => {

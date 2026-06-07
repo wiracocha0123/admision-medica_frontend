@@ -30,6 +30,8 @@ export default function Citas() {
   const [openModal, setOpenModal] = useState(false);
   const [viewMode, setViewMode] = useState(false); 
   const [selectedCita, setSelectedCita] = useState(null);
+  const [configCuposModalOpen, setConfigCuposModalOpen] = useState(false);
+  const [cuposEspecialidades, setCuposEspecialidades] = useState({});
 
   // Usar una función para obtener hoy en formato Local de Perú/Sistema para evitar saltos de día por UTC
   const getTodayStr = () => {
@@ -60,50 +62,26 @@ export default function Citas() {
     total_tickets_dia: 16
   });
 
-  const [globalTotalTickets, setGlobalTotalTickets] = useState(16);
-
-  // 1. Obtener última capacidad configurada para hoy (para persistencia)
-  const { data: initialCapacidad } = useQuery({
-    queryKey: ["capacidad-inicial", hoyStr],
-    queryFn: async () => {
-      try {
-        const res = await api.get(`/citas?page=all&fecha=${hoyStr}`);
-        const responseData = res.data?.data || res.data || [];
-        const itemsList = Array.isArray(responseData) ? responseData : (Array.isArray(responseData.data) ? responseData.data : []);
-        if (itemsList.length > 0) {
-          // Si hay citas, tomamos el total_tickets_dia de la primera
-          return parseInt(itemsList[0].total_tickets_dia) || 16;
-        }
-        return 16;
-      } catch (err) { return 16; }
-    },
-    enabled: !!user,
-    staleTime: 5 * 60 * 1000,
-  });
-
-  useEffect(() => {
-    if (initialCapacidad) {
-      setGlobalTotalTickets(initialCapacidad);
+  // Cargar cupos por especialidad desde el servidor
+  const loadCuposConfig = async (especialidades) => {
+    try {
+      const res = await api.get(`/citas/cupos-config?fecha=${hoyStr}`);
+      const data = res.data?.data || {};
+      setCuposEspecialidades(data);
+    } catch (err) {
+      // Si el endpoint no existe, inicializar con valores por defecto
+      const defaultCupos = {};
+      especialidades.forEach(esp => {
+        defaultCupos[esp.id] = 16;
+      });
+      setCuposEspecialidades(defaultCupos);
     }
-  }, [initialCapacidad]);
+  };
 
-  // Consulta para verificar si ya hay citas hoy y bloquear la edición del límite
-  const { data: hasCitasHoyServer, refetch: refetchCheckHoy } = useQuery({
-    queryKey: ["check-citas-hoy", hoyStr],
-    queryFn: async () => {
-      try {
-        const res = await api.get(`/citas?page=all&fecha=${hoyStr}`);
-        const responseData = res.data?.data || res.data || [];
-        const itemsList = Array.isArray(responseData) ? responseData : (Array.isArray(responseData.data) ? responseData.data : []);
-        return itemsList.length > 0;
-      } catch (err) { return false; }
-    },
-    enabled: !!user,
-    staleTime: 0
-  });
-
-  // Usamos una variable local para el estado de bloqueo
-  const isLocked = hasCitasHoyServer || false;
+  // Obtener cupo configurado para una especialidad
+  const getCupoEspecialidad = (especialidadId) => {
+    return cuposEspecialidades[especialidadId] || 16;
+  };
 
   // Efecto para reiniciar a la página 1 cuando cambian los filtros
   useEffect(() => {
@@ -127,6 +105,13 @@ export default function Citas() {
     cacheTime: 10 * 60 * 1000,
   });
   const especialidadesList = Array.isArray(especialidadesData) ? especialidadesData : [];
+
+  // Cargar cupos cuando las especialidades estén disponibles
+  useEffect(() => {
+    if (especialidadesList.length > 0) {
+      loadCuposConfig(especialidadesList);
+    }
+  }, [hoyStr, especialidadesList]);
 
   const { data: pacientesData } = useQuery({
     queryKey: ["pacientes_all"],
@@ -380,47 +365,64 @@ export default function Citas() {
       estado: "pendiente",
       observaciones: "",
       nro_ticket: "",
-      total_tickets_dia: globalTotalTickets
+      total_tickets_dia: 16
     });
     setOpenModal(true);
   };
 
-  // Obtener tickets del día para autoincrementar real
+  // Obtener tickets del día para autoincrementar real - POR ESPECIALIDAD
   const { data: infoTicketsDia = { ocupados: [], total: 16, sugerido: 1 }, isLoading: isLoadingTickets } = useQuery({
-    queryKey: ["tickets-dia", formData.fecha], // Quitamos personal_salud_id de la dependencia
+    queryKey: ["tickets-dia", formData.fecha, formData.especialidad_id], // Ahora incluye especialidad
     queryFn: async () => {
-      if (!formData.fecha) {
+      if (!formData.fecha || !formData.especialidad_id) {
         return { ocupados: [], total: 16, sugerido: 1 };
       }
       try {
-        const res = await api.get(`/citas/next-ticket?fecha=${formData.fecha}`);
-        const data = res.data?.data || {};
+        const cupoEspecialidad = getCupoEspecialidad(formData.especialidad_id);
+        // Obtener citas del día para calcular tickets por especialidad
+        const resCitas = await api.get(`/citas?page=all&fecha=${formData.fecha}`);
+        const todosLasCitas = Array.isArray(resCitas.data?.data) ? resCitas.data.data : [];
+        
+        // Filtrar tickets de esta especialidad
+        const ticketsEspecialidad = todosLasCitas
+          .filter(cita => String(cita.especialidad_id) === String(formData.especialidad_id))
+          .map(cita => parseInt(cita.nro_ticket))
+          .sort((a, b) => a - b);
+        
+        // Calcular siguiente ticket
+        let siguienteTicket = 1;
+        if (ticketsEspecialidad.length > 0) {
+          const maxTicket = Math.max(...ticketsEspecialidad);
+          siguienteTicket = maxTicket + 1;
+        }
         
         return { 
-          ocupados: [],
-          total: data.total_tickets_dia || 16,
-          sugerido: data.next_ticket || 1
+          ocupados: ticketsEspecialidad,
+          total: cupoEspecialidad || 16,
+          sugerido: siguienteTicket
         };
       } catch (err) {
         console.error("Error obteniendo siguiente ticket:", err);
-        return { ocupados: [], total: 16, sugerido: 1 };
+        const cupoEspecialidad = getCupoEspecialidad(formData.especialidad_id);
+        return { ocupados: [], total: cupoEspecialidad || 16, sugerido: 1 };
       }
     },
-    enabled: !!formData.fecha && openModal,
+    enabled: !!formData.fecha && !!formData.especialidad_id && openModal,
     refetchOnWindowFocus: true,
     staleTime: 0
   });
 
   // Efecto para sincronizar el nro_ticket cuando infoTicketsDia cambie
   useEffect(() => {
-    if (openModal && !selectedCita && infoTicketsDia?.sugerido) {
+    if (openModal && !selectedCita && infoTicketsDia?.sugerido && formData.especialidad_id) {
+      const cupoEspecialidad = getCupoEspecialidad(formData.especialidad_id);
       setFormData(prev => ({ 
         ...prev, 
         nro_ticket: infoTicketsDia.sugerido,
-        total_tickets_dia: infoTicketsDia.total
+        total_tickets_dia: infoTicketsDia.total || cupoEspecialidad || 16
       }));
     }
-  }, [infoTicketsDia?.sugerido, infoTicketsDia?.total, openModal, selectedCita]);
+  }, [infoTicketsDia?.sugerido, infoTicketsDia?.total, openModal, selectedCita, formData.especialidad_id]);
 
   const handleOpenEdit = (cita) => {
     setSelectedCita(cita);
@@ -546,7 +548,9 @@ export default function Citas() {
 
     // Si el ticket no es un número, intentar usar el sugerido de la query como último recurso
     let ticketValue = parseInt(formData.nro_ticket);
-    const totalValue = parseInt(globalTotalTickets);
+    // Usar cupo por especialidad
+    const cupoEspecialidad = getCupoEspecialidad(formData.especialidad_id);
+    const totalValue = parseInt(cupoEspecialidad || 16);
 
     if (isNaN(ticketValue) && infoTicketsDia?.sugerido) {
       ticketValue = parseInt(infoTicketsDia.sugerido);
@@ -577,6 +581,14 @@ export default function Citas() {
     };
 
     console.log("DEBUG - Payload a enviar:", JSON.stringify(payload, null, 2));
+    
+    // IMPORTANTE PARA BACKEND:
+    // El nro_ticket DEBE ser independiente por especialidad_id
+    // El backend debe:
+    // 1. Cuando se cree/actualice una cita, usar especialidad_id para filtrar tickets existentes
+    // 2. Encontrar el MAX(nro_ticket) WHERE fecha = ? AND especialidad_id = ?
+    // 3. Asignar siguiente = MAX + 1 (no usar MAX general de la tabla)
+    // 4. Validar que nro_ticket <= total_tickets_dia para esa especialidad
 
     if (selectedCita) {
       mutationUpdate.mutate(payload);
@@ -686,32 +698,13 @@ export default function Citas() {
           <CalendarIcon /> Gestión de Citas {isFetching && <CircularProgress size={20} />}
         </Typography>
         <Box sx={{ display: "flex", gap: 2, alignItems: "center" }}>
-          <Tooltip title={isLocked ? "No se puede cambiar el límite porque ya se emitieron tickets hoy" : "Establecer límite de atención para hoy"}>
-            <TextField
-              label="Capacidad Diaria"
-              type="number"
-              size="small"
-              value={globalTotalTickets}
-              onChange={(e) => setGlobalTotalTickets(parseInt(e.target.value) || 1)}
-              disabled={isLocked}
-              sx={{ 
-                width: 150,
-                "& .MuiInputBase-input.Mui-disabled": {
-                  WebkitTextFillColor: "#d32f2f",
-                  fontWeight: "bold"
-                }
-              }}
-              slotProps={{
-                input: {
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SettingsIcon fontSize="small" color={isLocked ? "error" : "action"} />
-                    </InputAdornment>
-                  ),
-                }
-              }}
-            />
-          </Tooltip>
+          <Button 
+            variant="outlined" 
+            startIcon={<SettingsIcon />} 
+            onClick={() => setConfigCuposModalOpen(true)}
+          >
+            Configurar Cupos
+          </Button>
           <Button variant="outlined" startIcon={<RefreshIcon />} onClick={() => refetch()} disabled={isFetching}>Actualizar</Button>
           <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenCreate} color="primary">Nueva Cita</Button>
         </Box>
@@ -821,6 +814,7 @@ export default function Citas() {
             <TableRow>
               <TableCell>Paciente</TableCell>
               <TableCell>Personal</TableCell>
+              <TableCell>Cargo</TableCell>
               <TableCell>Especialidad</TableCell>
               <TableCell>Fecha y Hora</TableCell>
               <TableCell>Operador</TableCell>
@@ -872,6 +866,9 @@ export default function Citas() {
                   </TableCell>
                   <TableCell>
                     <Chip label={cita.personal_salud?.cargo || "General"} size="small" variant="outlined" sx={{ fontSize: "0.7rem" }} />
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2">{cita.especialidad?.especialidad || cita.especialidad?.nombre || "General"}</Typography>
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2" fontWeight="bold">
@@ -981,10 +978,10 @@ export default function Citas() {
                     <TextField 
                       fullWidth
                       label="N° Ticket Asignado"
-                      value={formData.fecha ? `Ticket ${formData.nro_ticket} / ${globalTotalTickets}` : "Seleccione fecha..."}
+                      value={formData.fecha && formData.especialidad_id ? `Ticket ${formData.nro_ticket} / ${getCupoEspecialidad(formData.especialidad_id)}` : "Seleccione especialidad y fecha..."}
                       disabled
                       slotProps={{ input: { readOnly: true, sx: { bgcolor: "#e3f2fd", fontWeight: "bold", color: "primary.dark" } } }}
-                      helperText={formData.nro_ticket > globalTotalTickets ? "¡Aviso: Cupo extra!" : "Asignación automática"}
+                      helperText={formData.nro_ticket > getCupoEspecialidad(formData.especialidad_id) ? "¡Aviso: Cupo extra!" : "Asignación automática"}
                     />
                   </Grid>
                 </Grid>
@@ -1136,6 +1133,91 @@ export default function Citas() {
             {!viewMode && <Button type="submit" variant="contained" color={selectedCita ? "primary" : "success"} sx={{ px: 4 }}>{selectedCita ? "Actualizar Cita" : "Guardar Cita"}</Button>}
           </DialogActions>
         </form>
+      </Dialog>
+
+      {/* MODAL CONFIGURAR CUPOS POR ESPECIALIDAD */}
+      <Dialog 
+        open={configCuposModalOpen} 
+        onClose={() => setConfigCuposModalOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Configurar Cupos por Especialidad</DialogTitle>
+        <DialogContent sx={{ py: 3 }}>
+          <Typography variant="body2" color="textSecondary" sx={{ mb: 3 }}>
+            Establece el número máximo de citas por especialidad para {filterFecha}.
+          </Typography>
+          <Stack spacing={2}>
+            {especialidadesList.map((esp) => (
+              <TextField
+                key={esp.id}
+                label={esp.especialidad}
+                type="number"
+                size="small"
+                value={cuposEspecialidades[esp.id] || 16}
+                onChange={(e) => {
+                  const valor = parseInt(e.target.value) || 16;
+                  setCuposEspecialidades(prev => ({
+                    ...prev,
+                    [esp.id]: Math.max(1, valor)
+                  }));
+                }}
+                slotProps={{ 
+                  htmlInput: { min: 1, max: 100 }
+                }}
+                fullWidth
+              />
+            ))}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfigCuposModalOpen(false)}>Cancelar</Button>
+          <Button 
+            onClick={async () => {
+              try {
+                // Guardar configuración en el servidor
+                await api.post(`/citas/cupos-config`, {
+                  fecha: filterFecha,
+                  cupos: cuposEspecialidades
+                });
+                Swal.fire({
+                  icon: 'success',
+                  title: 'Configuración guardada',
+                  text: 'Los cupos por especialidad se han actualizado correctamente.',
+                  timer: 1500,
+                  showConfirmButton: false,
+                  heightAuto: false
+                });
+                setConfigCuposModalOpen(false);
+              } catch (err) {
+                // Si el servidor no lo soporta aún, mostrar mensaje informativo
+                if (err.response?.status === 404 || err.response?.status === 405) {
+                  Swal.fire({
+                    icon: 'info',
+                    title: 'En desarrollo',
+                    text: 'El guardado en servidor está en desarrollo. Los cupos se mantienen en sesión.',
+                    timer: 2000,
+                    showConfirmButton: false,
+                    heightAuto: false
+                  });
+                  setConfigCuposModalOpen(false);
+                } else {
+                  Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: 'No se pudo guardar la configuración de cupos.',
+                    confirmButtonColor: '#3085d6',
+                    heightAuto: false
+                  });
+                }
+              }
+            }}
+            variant="contained"
+            color="primary"
+          >
+            Guardar
+          </Button>
+        </DialogActions>
       </Dialog>
     </Paper>
   );

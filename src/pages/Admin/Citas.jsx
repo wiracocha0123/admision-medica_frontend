@@ -62,6 +62,9 @@ export default function Citas() {
     total_tickets_dia: 16
   });
 
+  // Estado para almacenar citas actuales por especialidad
+  const [citasActualesEspecialidad, setCitasActualesEspecialidad] = useState({});
+
   // Cargar cupos por especialidad desde el servidor
   const loadCuposConfig = async (especialidades) => {
     try {
@@ -76,6 +79,12 @@ export default function Citas() {
       });
       setCuposEspecialidades(defaultCupos);
     }
+  };
+
+  // Contar citas actuales por especialidad
+  const contarCitasEspecialidad = (especialidadId) => {
+    if (!items || items.length === 0) return 0;
+    return items.filter(cita => String(cita.especialidad_id) === String(especialidadId)).length;
   };
 
   // Obtener cupo configurado para una especialidad
@@ -270,10 +279,15 @@ export default function Citas() {
       if (msg.includes('already been taken')) msg = "El número de ticket ya está ocupado para esta fecha.";
       if (msg.includes('paciente_id')) msg = "Debe seleccionar un paciente válido de la lista.";
       if (msg.includes('personal_salud_id')) msg = "Debe seleccionar un médico de la lista.";
+      if (msg.includes('cupos_llenos') || msg.includes('exceed') || msg.includes('límite')) {
+        const cupoEsp = getCupoEspecialidad(formData.especialidad_id);
+        const especEsp = especialidadesList.find(e => e.id === parseInt(formData.especialidad_id));
+        msg = `⚠️ Se ha alcanzado el límite de cupos disponibles de hoy para ${especEsp?.especialidad || 'esta especialidad'} (Cupos: ${cupoEsp}).`;
+      }
 
       Swal.fire({
-        icon: 'error',
-        title: 'No se pudo registrar la cita',
+        icon: msg.includes('⚠️') ? 'warning' : 'error',
+        title: msg.includes('⚠️') ? 'Límite de cupos alcanzado' : 'No se pudo registrar la cita',
         text: msg,
         confirmButtonColor: '#3085d6',
         heightAuto: false
@@ -1142,48 +1156,92 @@ export default function Citas() {
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Configurar Cupos por Especialidad</DialogTitle>
+        <DialogTitle>Cupos para Hoy - {hoyStr}</DialogTitle>
         <DialogContent sx={{ py: 3 }}>
-          <Typography variant="body2" color="textSecondary" sx={{ mb: 3 }}>
-            Establece el número máximo de citas por especialidad para {filterFecha}.
-          </Typography>
-          <Stack spacing={2}>
-            {especialidadesList.map((esp) => (
-              <TextField
-                key={esp.id}
-                label={esp.especialidad}
-                type="number"
-                size="small"
-                value={cuposEspecialidades[esp.id] || 16}
-                onChange={(e) => {
-                  const valor = parseInt(e.target.value) || 16;
-                  setCuposEspecialidades(prev => ({
-                    ...prev,
-                    [esp.id]: Math.max(1, valor)
-                  }));
-                }}
-                slotProps={{ 
-                  htmlInput: { min: 1, max: 100 }
-                }}
-                fullWidth
-              />
-            ))}
+          <Alert severity="info" sx={{ mb: 3 }}>
+            <Typography variant="body2">
+              ⚠️ No puede reducir cupos por debajo de citas ya creadas.
+            </Typography>
+          </Alert>
+          <Stack spacing={3}>
+            {especialidadesList.map((esp) => {
+              const citasActuales = contarCitasEspecialidad(esp.id);
+              const cupoActual = cuposEspecialidades[esp.id] || 16;
+              const puedeReducir = cupoActual > citasActuales;
+              
+              return (
+                <Box key={esp.id}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                    <Typography variant="body2" fontWeight="500">
+                      {esp.especialidad}
+                    </Typography>
+                    <Chip 
+                      label={`${citasActuales} de ${cupoActual} citas`}
+                      color={citasActuales === cupoActual ? "error" : citasActuales > cupoActual * 0.8 ? "warning" : "default"}
+                      size="small"
+                      variant="outlined"
+                    />
+                  </Stack>
+                  <TextField
+                    fullWidth
+                    type="number"
+                    size="small"
+                    value={cupoActual}
+                    onChange={(e) => {
+                      const valor = parseInt(e.target.value) || 16;
+                      // No permitir reducir por debajo de citas actuales
+                      const nuevoValor = Math.max(citasActuales, Math.max(1, valor));
+                      setCuposEspecialidades(prev => ({
+                        ...prev,
+                        [esp.id]: nuevoValor
+                      }));
+                    }}
+                    slotProps={{ 
+                      htmlInput: { min: citasActuales, max: 100 }
+                    }}
+                    helperText={citasActuales > 0 ? `Mín. ${citasActuales} citas` : ""}
+                    error={citasActuales === cupoActual && citasActuales > 0}
+                  />
+                </Box>
+              );
+            })}
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfigCuposModalOpen(false)}>Cancelar</Button>
           <Button 
             onClick={async () => {
+              // Validar que ningún cupo sea menor a las citas actuales
+              let errores = [];
+              especialidadesList.forEach(esp => {
+                const citasActuales = contarCitasEspecialidad(esp.id);
+                const cupoNuevo = cuposEspecialidades[esp.id] || 16;
+                if (cupoNuevo < citasActuales) {
+                  errores.push(`${esp.especialidad}: No puede reducir a ${cupoNuevo} cupos (hay ${citasActuales} citas creadas)`);
+                }
+              });
+
+              if (errores.length > 0) {
+                Swal.fire({
+                  icon: 'warning',
+                  title: 'Validación de cupos',
+                  html: '<ul style="text-align: left;">' + errores.map(e => `<li>${e}</li>`).join('') + '</ul>',
+                  confirmButtonColor: '#3085d6',
+                  heightAuto: false
+                });
+                return;
+              }
+
               try {
                 // Guardar configuración en el servidor
                 await api.post(`/citas/cupos-config`, {
-                  fecha: filterFecha,
+                  fecha: hoyStr,
                   cupos: cuposEspecialidades
                 });
                 Swal.fire({
                   icon: 'success',
                   title: 'Configuración guardada',
-                  text: 'Los cupos por especialidad se han actualizado correctamente.',
+                  text: 'Los cupos por especialidad se han actualizado correctamente para hoy.',
                   timer: 1500,
                   showConfirmButton: false,
                   heightAuto: false
@@ -1201,6 +1259,14 @@ export default function Citas() {
                     heightAuto: false
                   });
                   setConfigCuposModalOpen(false);
+                } else if (err.response?.status === 400) {
+                  Swal.fire({
+                    icon: 'warning',
+                    title: 'Error de validación',
+                    text: err.response?.data?.message || 'No se puede reducir los cupos por debajo de las citas creadas.',
+                    confirmButtonColor: '#3085d6',
+                    heightAuto: false
+                  });
                 } else {
                   Swal.fire({
                     icon: 'error',

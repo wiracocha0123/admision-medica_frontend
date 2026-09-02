@@ -1,12 +1,116 @@
 import React, { useState, useContext } from 'react';
 import { Paper, Typography, Table, TableBody, TableCell, TableHead, TableRow, Button, Box, Avatar, CircularProgress, TableContainer, Dialog, DialogTitle, DialogContent, DialogActions, TextField, IconButton, Tooltip, Stack, Skeleton, Pagination, InputAdornment } from '@mui/material';
-import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Visibility as VisibilityIcon, Refresh as RefreshIcon, Search as SearchIcon, Close as CloseIcon } from '@mui/icons-material';
+import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Visibility as VisibilityIcon, Refresh as RefreshIcon, Search as SearchIcon, Close as CloseIcon, CalendarMonth as CalendarMonthIcon } from '@mui/icons-material';
+import { Chip } from '@mui/material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getOperadores, createOperador, updateOperador, deleteOperador } from '../../services/operadoresService';
 import { AuthContext } from '../../contexts/AuthContext';
-import HorarioSemanalPicker from '../../components/HorarioSemanalPicker';
-import HorarioSemanalDisplay from '../../components/HorarioSemanalDisplay';
+import HorarioMensualPicker from '../../components/HorarioMensualPicker';
 import Swal from 'sweetalert2';
+
+const getSafeDiaNumero = (value, fallback) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const buildFullMonthHorario = (items = []) => {
+  const now = new Date();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const byDia = new Map();
+
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    const dia = getSafeDiaNumero(item?.dia_numero ?? item?.dia, 0);
+    if (!dia) return;
+
+    byDia.set(dia, {
+      dia_numero: dia,
+      turno_m: item?.turno_m ?? item?.manana ?? '',
+      turno_t: item?.turno_t ?? item?.tarde ?? '',
+      turno_n: item?.turno_n ?? item?.noche ?? ''
+    });
+  });
+
+  return Array.from({ length: daysInMonth }, (_, index) => {
+    const dia = index + 1;
+    const existing = byDia.get(dia) || {};
+    return {
+      dia_numero: dia,
+      turno_m: existing.turno_m ?? '',
+      turno_t: existing.turno_t ?? '',
+      turno_n: existing.turno_n ?? ''
+    };
+  });
+};
+
+const getOperadorHorarioMensual = (item) => {
+  if (!item || typeof item !== 'object') return [];
+  return item.horario_mensual ?? item.horario ?? item.horarioMensual ?? item.schedule_mensual ?? item.scheduleMonthly ?? [];
+};
+
+const normalizeMonthlyHorario = (value) => {
+  let normalized = value;
+
+  if (typeof normalized === 'string') {
+    try {
+      normalized = JSON.parse(normalized);
+    } catch (e) {
+      normalized = [];
+    }
+  }
+
+  if (Array.isArray(normalized)) {
+    return buildFullMonthHorario(normalized);
+  }
+
+  if (normalized && typeof normalized === 'object') {
+    return buildFullMonthHorario(Object.keys(normalized).map((dia) => ({
+      dia_numero: getSafeDiaNumero(dia, 1),
+      turno_m: normalized[dia]?.turno_m || normalized[dia]?.manana || '',
+      turno_t: normalized[dia]?.turno_t || normalized[dia]?.tarde || '',
+      turno_n: normalized[dia]?.turno_n || normalized[dia]?.noche || ''
+    })));
+  }
+
+  return buildFullMonthHorario([]);
+};
+
+const hasMonthlyHorario = (value) => {
+  if (value === null || value === undefined || value === '') return false;
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === '[]' || trimmed === '{}') return false;
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      return hasMonthlyHorario(parsed);
+    } catch {
+      return false;
+    }
+  }
+
+  if (Array.isArray(value)) {
+    return value.some((item) => {
+      if (!item || typeof item !== 'object') return false;
+      const turnoM = item.turno_m ?? item.manana ?? '';
+      const turnoT = item.turno_t ?? item.tarde ?? '';
+      const turnoN = item.turno_n ?? item.noche ?? '';
+      return [turnoM, turnoT, turnoN].some((turno) => String(turno ?? '').trim() !== '');
+    });
+  }
+
+  if (typeof value === 'object') {
+    return Object.values(value).some((day) => {
+      if (!day || typeof day !== 'object') return false;
+      const turnoM = day.turno_m ?? day.manana ?? '';
+      const turnoT = day.turno_t ?? day.tarde ?? '';
+      const turnoN = day.turno_n ?? day.noche ?? '';
+      return [turnoM, turnoT, turnoN].some((turno) => String(turno ?? '').trim() !== '');
+    });
+  }
+
+  return false;
+};
 
 export default function Operadores() {
   const { user } = useContext(AuthContext);
@@ -17,8 +121,7 @@ export default function Operadores() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState('create');
   const [current, setCurrent] = useState(null);
-  const emptyWeek = { lunes: {}, martes: {}, miercoles: {}, jueves: {}, viernes: {}, sabado: {}, domingo: {} };
-  const [form, setForm] = useState({ nombre: '', apellido: '', email: '', usuario: '', contraseña: '', DNI: '', horario_semanal: emptyWeek });
+  const [form, setForm] = useState({ nombre: '', apellido: '', email: '', usuario: '', contraseña: '', DNI: '', horario_mensual: [] });
   const [saveError, setSaveError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
 
@@ -135,7 +238,7 @@ export default function Operadores() {
 
   const openCreate = () => {
     setDialogMode('create');
-    setForm({ nombre: '', apellido: '', email: '', usuario: '', contraseña: '', DNI: '', horario_semanal: emptyWeek });
+    setForm({ nombre: '', apellido: '', email: '', usuario: '', contraseña: '', DNI: '', horario_mensual: buildFullMonthHorario([]) });
     setCurrent(null);
     setFieldErrors({});
     setSaveError('');
@@ -152,9 +255,7 @@ export default function Operadores() {
       usuario: it.usuario || it.user || '',
       contraseña: '',
       DNI: it.DNI || it.dni || it.documento || '',
-      horario_semanal: typeof it.horario_semanal === 'string' && it.horario_semanal.trim().startsWith('{') 
-        ? JSON.parse(it.horario_semanal) 
-        : (it.horario_semanal || emptyWeek)
+      horario_mensual: normalizeMonthlyHorario(getOperadorHorarioMensual(it) || it.horario_semanal || [])
     });
     setFieldErrors({});
     setSaveError('');
@@ -171,9 +272,7 @@ export default function Operadores() {
       usuario: it.usuario || it.user || '',
       contraseña: '',
       DNI: it.DNI || it.dni || it.documento || '',
-      horario_semanal: typeof it.horario_semanal === 'string' && it.horario_semanal.trim().startsWith('{') 
-        ? JSON.parse(it.horario_semanal) 
-        : (it.horario_semanal || emptyWeek)
+      horario_mensual: normalizeMonthlyHorario(getOperadorHorarioMensual(it) || it.horario_semanal || [])
     });
     setFieldErrors({});
     setSaveError('');
@@ -185,27 +284,16 @@ export default function Operadores() {
     setFieldErrors({});
 
     const dataToSend = { ...form };
-    
-    // Nos aseguramos que los días vacíos sean objetos {} y no arrays [] antes de enviar
-    const cleanHorario = {};
-    if (dataToSend.horario_semanal) {
-      Object.keys(dataToSend.horario_semanal).forEach(dia => {
-        const valor = dataToSend.horario_semanal[dia];
-        // Si el valor es una lista [] o null, lo forzamos a objeto {}
-        if (Array.isArray(valor) || !valor) {
-          cleanHorario[dia] = {};
-        } else {
-          cleanHorario[dia] = valor;
-        }
-      });
-    }
 
-    const payload = { 
+    const cleanHorario = buildFullMonthHorario(dataToSend.horario_mensual || []);
+
+    const payload = {
       ...dataToSend,
-      horario_semanal: cleanHorario 
+      horario_mensual: cleanHorario,
+      horario_semanal: {}
     };
 
-    console.log("DEBUG - Payload a enviar (Objeto Raw):", payload);
+    console.log("DEBUG - Payload a enviar (Horario Mensual):", payload);
     console.log("DEBUG - ID del operador:", current?.id || current?.pk || current?.operador_id);
 
     if (dialogMode === 'edit') {
@@ -299,7 +387,19 @@ export default function Operadores() {
                   </TableCell>
                   
                   <TableCell>{it.usuario || it.user}</TableCell>
-                  <TableCell><HorarioSemanalDisplay horario={it.horario_semanal} /></TableCell>
+                  <TableCell>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<CalendarMonthIcon />}
+                      onClick={() => openView(it)}
+                      disabled={!hasMonthlyHorario(getOperadorHorarioMensual(it) || it.horario_semanal)}
+                      color={hasMonthlyHorario(getOperadorHorarioMensual(it) || it.horario_semanal) ? 'primary' : 'inherit'}
+                      sx={{ textTransform: 'none', borderRadius: 2 }}
+                    >
+                      {hasMonthlyHorario(getOperadorHorarioMensual(it) || it.horario_semanal) ? 'Ver horario' : 'Sin horario'}
+                    </Button>
+                  </TableCell>
                   <TableCell align="right">
                     <Tooltip title="Ver"><IconButton size="small" onClick={() => openView(it)}><VisibilityIcon fontSize="small" /></IconButton></Tooltip>
                     <Tooltip title="Editar"><IconButton size="small" onClick={() => openEdit(it)}><EditIcon fontSize="small" /></IconButton></Tooltip>
@@ -384,7 +484,51 @@ export default function Operadores() {
                 autoComplete="new-password"
               />
             )}
-            <HorarioSemanalPicker value={form.horario_semanal} onChange={(v) => setForm(s => ({ ...s, horario_semanal: v }))} disabled={dialogMode === 'view'} />
+            {dialogMode === 'view' ? (
+              <Box sx={{ mt: 1 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'bold' }}>Programación Mensual</Typography>
+                {form.horario_mensual && form.horario_mensual.length > 0 ? (
+                  <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 350, overflowY: 'auto' }}>
+                    <Table size="small" stickyHeader>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell size="small" sx={{ bgcolor: 'grey.100', fontWeight: 'bold' }}>Día</TableCell>
+                          <TableCell size="small" sx={{ bgcolor: 'grey.100', fontWeight: 'bold' }}>Mañana</TableCell>
+                          <TableCell size="small" sx={{ bgcolor: 'grey.100', fontWeight: 'bold' }}>Tarde</TableCell>
+                          <TableCell size="small" sx={{ bgcolor: 'grey.100', fontWeight: 'bold' }}>Noche</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {form.horario_mensual.map((d, index) => (
+                          <TableRow key={index} hover>
+                            <TableCell size="small" sx={{ fontWeight: 'medium' }}>Día {d.dia_numero}</TableCell>
+                            <TableCell size="small">
+                              {d.turno_m ? (
+                                <Chip label={d.turno_m} size="small" color="primary" sx={{ minWidth: 40, height: 20, fontSize: '0.65rem' }} />
+                              ) : '-'}
+                            </TableCell>
+                            <TableCell size="small">
+                              {d.turno_t ? (
+                                <Chip label={d.turno_t} size="small" color="secondary" sx={{ minWidth: 40, height: 20, fontSize: '0.65rem' }} />
+                              ) : '-'}
+                            </TableCell>
+                            <TableCell size="small">
+                              {d.turno_n ? (
+                                <Chip label={d.turno_n} size="small" color="warning" sx={{ minWidth: 40, height: 20, fontSize: '0.65rem' }} />
+                              ) : '-'}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                ) : (
+                  <Typography variant="body2" color="text.secondary">No hay programación mensual registrada.</Typography>
+                )}
+              </Box>
+            ) : (
+              <HorarioMensualPicker value={form.horario_mensual} onChange={(v) => setForm(s => ({ ...s, horario_mensual: v }))} />
+            )}
           </Box>
         </DialogContent>
         <DialogActions>

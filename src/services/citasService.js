@@ -1,8 +1,9 @@
 import api, { get, post } from '../api';
 export const getCitas = (page = 1, fecha = '', search = '', estado = 'todos', especialidad = 'todas') => {
+  const normalizedSearch = String(search ?? '').replace(/\s+/g, ' ').trim();
   let url = `/citas?page=${page}`;
   if (fecha) url += `&fecha=${fecha}`;
-  if (search) url += `&search=${encodeURIComponent(search)}`;
+  if (normalizedSearch) url += `&search=${encodeURIComponent(normalizedSearch)}`;
   if (estado !== 'todos') url += `&estado=${estado}`;
   if (especialidad !== 'todas') url += `&especialidad_id=${especialidad}`;
   return api.get(url).then(r => r.data);

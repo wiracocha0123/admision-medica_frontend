@@ -12,7 +12,7 @@ import {
   PictureAsPdf as PdfIcon, Clear as ClearIcon, Close as CloseIcon
 } from "@mui/icons-material";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getCitas, createCita, updateCita, deleteCita } from "../../services/citasService";
+import { getCitas, getAllCitas, createCita, updateCita, deleteCita } from "../../services/citasService";
 import api from "../../api"; // Asegúrate de importar la instancia configurada de api
 import { getPacientes, getAllPacientes } from "../../services/pacientesService";
 import { getPersonalSalud, getAllPersonalSalud } from "../../services/personalService";
@@ -49,6 +49,24 @@ export default function Citas() {
   const [filterEstado, setFilterEstado] = useState("todos");
   const [filterFecha, setFilterFecha] = useState(hoyStr); // Filtrar por hoy por defecto
   const [filterEspecialidad, setFilterEspecialidad] = useState("todas");
+
+  const normalizedSearchTerm = String(searchTerm ?? "").replace(/\s+/g, " ").trim();
+  const shouldUseFrontendSearch = normalizedSearchTerm.includes(" ");
+
+  const matchesCitaSearch = (cita, search) => {
+    if (!search) return true;
+
+    const searchText = String(search || "").toLowerCase();
+    const nombrePaciente = [cita?.paciente?.nombre, cita?.paciente?.apellido].filter(Boolean).join(" ").toLowerCase();
+    const dniPaciente = String(cita?.paciente?.dni ?? cita?.paciente?.DNI ?? cita?.paciente?.documento ?? "").toLowerCase();
+    const pacienteNombreCompleto = `${cita?.paciente?.nombre || ""} ${cita?.paciente?.apellido || ""}`.trim().toLowerCase();
+
+    return (
+      nombrePaciente.includes(searchText) ||
+      pacienteNombreCompleto.includes(searchText) ||
+      dniPaciente.includes(searchText)
+    );
+  };
 
   const [formData, setFormData] = useState({
     paciente_id: "",
@@ -99,8 +117,23 @@ export default function Citas() {
   }, [searchTerm, filterEstado, filterFecha, filterEspecialidad]);
 
   const { data: citasData, isLoading, error, refetch, isFetching } = useQuery({
-    queryKey: ["citas", currentPage, filterFecha, searchTerm, filterEstado, filterEspecialidad],
-    queryFn: () => getCitas(currentPage, filterFecha, searchTerm, filterEstado, filterEspecialidad),
+    queryKey: ["citas", currentPage, filterFecha, shouldUseFrontendSearch ? "__all__" : normalizedSearchTerm, filterEstado, filterEspecialidad],
+    queryFn: async () => {
+      if (shouldUseFrontendSearch) {
+        const res = await getAllCitas(filterFecha);
+        const lista = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
+
+        const filtered = lista.filter((cita) => {
+          const matchesEstado = filterEstado === "todos" || String(cita.estado || "pendiente").toLowerCase() === filterEstado.toLowerCase();
+          const matchesEspecialidad = filterEspecialidad === "todas" || String(cita.especialidad_id ?? cita.especialidad?.id ?? "") === String(filterEspecialidad);
+          return matchesEstado && matchesEspecialidad && matchesCitaSearch(cita, normalizedSearchTerm);
+        });
+
+        return { data: filtered, last_page: Math.max(1, Math.ceil(filtered.length / 10)) };
+      }
+
+      return getCitas(currentPage, filterFecha, normalizedSearchTerm, filterEstado, filterEspecialidad);
+    },
     enabled: !!user,
   });
 
@@ -702,8 +735,10 @@ export default function Citas() {
     });
   };
 
-  // Con los cambios en el backend, la estructura es directa de Laravel Pagination
-  const items = Array.isArray(citasData?.data) ? citasData.data : [];
+  const baseItems = Array.isArray(citasData?.data) ? citasData.data : [];
+  const items = shouldUseFrontendSearch
+    ? baseItems.slice((currentPage - 1) * 10, currentPage * 10)
+    : baseItems;
   const totalPages = citasData?.last_page || 1;
   
   const getEstadoColor = (estado) => {

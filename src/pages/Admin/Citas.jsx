@@ -55,6 +55,7 @@ export default function Citas() {
     personal_salud_id: "",
     especialidad_id: "",
     fecha: new Date().toLocaleDateString('en-CA'),
+    turno: "",
     hora: "",
     estado: "pendiente",
     observaciones: "",
@@ -375,6 +376,7 @@ export default function Citas() {
       personal_salud_id: "",
       especialidad_id: "",
       fecha: getTodayStr(),
+      turno: "",
       hora: "",
       estado: "pendiente",
       observaciones: "",
@@ -453,6 +455,7 @@ export default function Citas() {
       personal_salud_id: cita.personal?.id || cita.personal_salud_id || "",
       especialidad_id: cita.especialidad?.id || cita.especialidad_id || "",
       fecha: cita.fecha ? cita.fecha.split("T")[0] : "",
+      turno: cita.turno || "",
       hora: horaInput,
       estado: cita.estado || "pendiente",
       observaciones: cita.observaciones || "",
@@ -475,6 +478,7 @@ export default function Citas() {
       personal_salud_id: cita.personal?.id || cita.personal_salud_id || "",
       especialidad_id: cita.especialidad?.id || cita.especialidad_id || "",
       fecha: cita.fecha ? cita.fecha.split("T")[0] : "",
+      turno: cita.turno || "",
       hora: horaInput,
       estado: cita.estado || "pendiente",
       observaciones: cita.observaciones || "",
@@ -586,6 +590,7 @@ export default function Citas() {
       personal_salud_id: formData.personal_salud_id ? parseInt(formData.personal_salud_id) : null,
       especialidad_id: formData.especialidad_id ? parseInt(formData.especialidad_id) : null,
       fecha: formData.fecha,
+      turno: formData.turno || null,
       hora: formattedHora || null,
       estado: formData.estado.toLowerCase(),
       observaciones: formData.observaciones || "",
@@ -658,6 +663,11 @@ export default function Citas() {
     doc.text(`FECHA CITA:`, 5, 80);
     doc.setFont("helvetica", "normal");
     doc.text(`${fechaLimpia}`, 5, 85);
+
+    doc.setFont("helvetica", "bold");
+    doc.text(`TURNO:`, 5, 90);
+    doc.setFont("helvetica", "normal");
+    doc.text(`${cita.turno || 'No asignado'}`, 5, 95);
 
     doc.setFont("helvetica", "bold");
     doc.text(`HORA:`, 45, 80);
@@ -831,6 +841,7 @@ export default function Citas() {
               <TableCell>Cargo</TableCell>
               <TableCell>Especialidad</TableCell>
               <TableCell>Fecha y Hora</TableCell>
+              <TableCell>Turno</TableCell>
               <TableCell>Operador</TableCell>
               <TableCell>Estado</TableCell>
               <TableCell>N° de ticket</TableCell>
@@ -897,6 +908,9 @@ export default function Citas() {
                          {cita.hora || "-"}
                       </Box>
                     </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2">{cita.turno || "-"}</Typography>
                   </TableCell>
                   <TableCell><Typography variant="body2">{cita.operador?.nombre || cita.operador?.name} {cita.operador?.apellido}</Typography></TableCell>
                   <TableCell>
@@ -1025,6 +1039,20 @@ export default function Citas() {
                       disabled={viewMode} 
                       onChange={(e) => setFormData({ ...formData, hora: e.target.value })} 
                     />
+                  </Grid>
+                  <Grid size={12}>
+                    <TextField
+                      select
+                      label="Turno de Atención"
+                      disabled={viewMode}
+                      fullWidth
+                      value={formData.turno}
+                      onChange={(e) => setFormData({...formData, turno: e.target.value})}
+                    >
+                      <MenuItem value="Mañana">Mañana</MenuItem>
+                      <MenuItem value="Tarde">Tarde</MenuItem>
+                      
+                    </TextField>
                   </Grid>
                   <Grid size={12}>
                     <FormControl fullWidth>

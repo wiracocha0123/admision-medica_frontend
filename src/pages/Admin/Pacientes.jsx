@@ -35,6 +35,8 @@ export default function Pacientes() {
   const [formData, setFormData] = useState({
     nombre: '',
     apellido: '',
+    genero: '',
+    fecha_nacimiento: '',
     tipo_documento: 'DNI',
     dni: '',
     HistoriaClinica: '',
@@ -261,6 +263,8 @@ export default function Pacientes() {
         id: item.id,
         nombre: item.nombre || '',
         apellido: item.apellido || '',
+        genero: item.genero || '',
+        fecha_nacimiento: item.fecha_nacimiento || '',
         tipo_documento: docType,
         dni: dniValue,
         HistoriaClinica: item.HistoriaClinica || '',
@@ -276,6 +280,8 @@ export default function Pacientes() {
       setFormData({
         nombre: '',
         apellido: '',
+        genero: '',
+        fecha_nacimiento: '',
         tipo_documento: 'DNI',
         dni: '',
         HistoriaClinica: '',
@@ -295,6 +301,8 @@ export default function Pacientes() {
     setFormData({
       nombre: '',
       apellido: '',
+      genero: '',
+      fecha_nacimiento: '',
       tipo_documento: 'DNI',
       dni: '',
       HistoriaClinica: manualHC || 'Cargando...',
@@ -683,6 +691,9 @@ export default function Pacientes() {
             const placeholderPayload = {
               nombre: 'HC',
               apellido: 'LIBERADA',
+              genero: null,
+              fecha_nacimiento: null,
+              dni: null,
               tipo_documento: null,
               HistoriaClinica: originalHC,
               telefono: null,
@@ -979,6 +990,8 @@ export default function Pacientes() {
           <TableHead>
             <TableRow>
               <TableCell>Paciente</TableCell>
+              <TableCell>Género</TableCell>
+              <TableCell>Fecha de Nacimiento</TableCell>
               <TableCell>Documento</TableCell>
               <TableCell>H. Clínica</TableCell>
               <TableCell>Etapa Vida</TableCell>
@@ -1003,6 +1016,8 @@ export default function Pacientes() {
                         </Box>
                     </Box>
                  </TableCell>
+                  <TableCell>{p.genero || '-'}</TableCell>
+                  <TableCell>{p.fecha_nacimiento ? new Date(p.fecha_nacimiento).toLocaleDateString() : '-'}</TableCell>
                  <TableCell>
                     <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
                       {p.tipo_documento === 'CE' ? `CE: ${p.dni}` : p.dni}
@@ -1114,6 +1129,27 @@ export default function Pacientes() {
                     label="Apellidos" fullWidth variant="outlined" required
                     value={formData.apellido} 
                     onChange={(e) => setFormData({...formData, apellido: e.target.value})} 
+                  />
+                </Grid>
+                <Grid size={6}>
+                  <TextField
+                    select
+                    label="Género"
+                    fullWidth
+                    value={formData.genero}
+                    onChange={(e) => setFormData({...formData, genero: e.target.value})}
+                  >
+                    <MenuItem value="Masculino">Masculino</MenuItem>
+                    <MenuItem value="Femenino">Femenino</MenuItem>
+                  </TextField>
+                </Grid>
+                <Grid size={6}>
+                  <TextField
+                    label="Fecha de Nacimiento"
+                    fullWidth
+                    type="date"
+                    value={formData.fecha_nacimiento}
+                    onChange={(e) => setFormData({...formData, fecha_nacimiento: e.target.value})}
                   />
                 </Grid>
               </Grid>
